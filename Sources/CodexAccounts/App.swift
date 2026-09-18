@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             image.isTemplate = true
             button.image = image
             button.imagePosition = .imageLeading
-            button.title = " Codex Quota Dock"
+            button.title = model.menuTitle.isEmpty ? "" : " \(model.menuTitle)"
             button.toolTip = model.strings("View account quotas and switch accounts")
             button.target = self
             button.action = #selector(toggleMenu)
@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observer = model.objectWillChange.sink { [weak self, weak model] _ in
             DispatchQueue.main.async {
                 guard let self, let model else { return }
-                self.statusItem?.button?.title = model.menuTitle.isEmpty ? " Codex Quota Dock" : " Codex Quota Dock \(model.menuTitle)"
+                self.statusItem?.button?.title = model.menuTitle.isEmpty ? "" : " \(model.menuTitle)"
                 self.statusItem?.button?.toolTip = model.strings("View account quotas and switch accounts")
             }
         }
@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "statusItemCreated": statusItem != nil,
             "statusItemVisible": statusItem?.isVisible ?? false,
             "statusButtonTitle": statusItem?.button?.title ?? "",
+            "statusButtonHasImage": statusItem?.button?.image != nil,
             "statusButtonWidth": statusItem?.button?.frame.width ?? 0,
             "statusButtonHeight": statusItem?.button?.frame.height ?? 0,
             "statusWindowFrame": statusItem?.button?.window.map { NSStringFromRect($0.frame) } ?? "",

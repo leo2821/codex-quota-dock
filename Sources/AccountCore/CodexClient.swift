@@ -68,7 +68,7 @@ public final class CodexClient {
 
     public func initialize() async throws {
         _ = try await request("initialize", params: [
-            "clientInfo": ["name": "codex_accounts", "title": "Codex Quota Dock", "version": "1.1.0"],
+            "clientInfo": ["name": "codex_accounts", "title": "Codex Quota Dock", "version": "1.1.1"],
             "capabilities": ["experimentalApi": true]
         ])
         try send(["method": "initialized", "params": [:]])

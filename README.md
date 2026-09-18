@@ -12,7 +12,7 @@ Open `Codex Quota Dock.app`. You can copy it to your Applications folder.
 
 Requires macOS 14 or later and an installed ChatGPT desktop app that includes Codex. The downloadable build supports Apple Silicon, uses an ad-hoc signature, and is not notarized by Apple. On another Mac, you may need to allow the app in **System Settings → Privacy & Security**, or build it from source on your own Mac.
 
-On launch, the app saves the ChatGPT account currently signed in to your local Codex installation and reads its quota. The menu bar shows `Codex Quota Dock` and the current account's remaining quota. Click it to view saved accounts.
+On launch, the app saves the ChatGPT account currently signed in to your local Codex installation and reads its quota. The menu bar shows an account icon and the current account's remaining quota. Click it to view saved accounts.
 
 If you use iBar or another menu bar manager, expand or show this app's menu bar item in that tool.
 

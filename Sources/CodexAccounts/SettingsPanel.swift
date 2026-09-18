@@ -43,7 +43,7 @@ struct SettingsPanel: View {
                 Section(model.strings("Account data")) {
                     LabeledContent(model.strings("Credentials"), value: model.strings("macOS Keychain"))
                     LabeledContent(model.strings("Quota source"), value: model.strings("Official Codex account API"))
-                    LabeledContent(model.strings("Version"), value: "1.1.0")
+                    LabeledContent(model.strings("Version"), value: "1.1.1")
                     Text(model.strings("Names, settings, and recent results are stored on this Mac. Failed queries keep the previous result with its timestamp."))
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
