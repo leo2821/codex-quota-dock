@@ -44,7 +44,7 @@ struct MainView: View {
         .alert(model.strings("Remove the saved account?"), isPresented: Binding(get: { model.pendingRemoval != nil }, set: { if !$0 { model.pendingRemoval = nil } })) {
             Button(model.strings("Cancel"), role: .cancel) { model.pendingRemoval = nil }
             Button(model.strings("Remove account"), role: .destructive) { if let profile = model.pendingRemoval { model.remove(profile) } }
-        } message: { Text(model.strings("Saved records for %@ will be deleted from this app and Keychain.", model.pendingRemoval.map(model.displayLabel) ?? model.strings("Selected account"))) }
+        } message: { Text(model.strings("The saved account record and local auth.json for %@ will be deleted from this app.", model.pendingRemoval.map(model.displayLabel) ?? model.strings("Selected account"))) }
         .sheet(item: $model.editingProfile) { profile in RenameSheet(model: model, profile: profile) }
         .sheet(isPresented: $showingAddAccount) { AddAccountSheet(model: model) }
     }
@@ -100,6 +100,7 @@ struct MainView: View {
                 addMenu.controlSize(.large)
             }
             if model.isLoggingIn { loginBanner }
+            if model.pendingCredentialMigrations > 0 { migrationBanner }
             if model.profiles.isEmpty { emptyState }
             else {
                 HStack(spacing: 14) {
@@ -163,7 +164,7 @@ struct MainView: View {
                 Button(model.strings("Sign in with ChatGPT")) { Task { await model.login() } }.buttonStyle(.borderedProminent)
                 Button(model.strings("Import auth.json")) { Task { await model.importFile() } }
             }.controlSize(.large).padding(.top, 7).disabled(model.busy)
-            Label(model.strings("Credentials are stored in your Mac's Keychain"), systemImage: "lock.shield")
+            Label(model.strings("Each account is saved as a private local auth.json file"), systemImage: "lock.shield")
                 .font(.system(size: 11)).foregroundStyle(.secondary).padding(.top, 8)
             Spacer()
             Spacer()
@@ -177,6 +178,21 @@ struct MainView: View {
             Spacer()
             if let url = model.loginURL { Button(model.strings("Open sign-in page")) { NSWorkspace.shared.open(url) } }
             Button(model.strings("Cancel sign-in")) { Task { await model.cancelLogin() } }
+        }.padding(12).background(.white, in: RoundedRectangle(cornerRadius: 9))
+    }
+
+    private var migrationBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "folder.badge.person.crop").foregroundStyle(Palette.accent)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(model.strings("%@ saved accounts need migration", String(model.pendingCredentialMigrations)))
+                    .font(.system(size: 12, weight: .semibold))
+                Text(model.strings("Save existing accounts as local files. macOS may request Keychain access for each account during migration."))
+                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button(model.strings("Migrate saved accounts")) { Task { await model.migrateAccounts() } }
+                .disabled(model.busy)
         }.padding(12).background(.white, in: RoundedRectangle(cornerRadius: 9))
     }
 

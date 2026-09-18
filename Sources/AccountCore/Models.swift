@@ -140,6 +140,11 @@ public struct UsageSnapshot: Codable, Equatable {
     }
 }
 
+public enum CredentialStorage: String, Codable {
+    case keychain
+    case localFile
+}
+
 public struct Profile: Codable, Identifiable, Equatable {
     public let id: UUID
     public var label: String
@@ -149,6 +154,7 @@ public struct Profile: Codable, Identifiable, Equatable {
     public var usage: UsageSnapshot?
     public var lastError: String?
     public var localizedError: AccountFailure?
+    public var credentialStorage: CredentialStorage?
     public let createdAt: Date
     public init(label: String, accountID: String, info: AccountInfo) {
         id = UUID()
@@ -156,6 +162,7 @@ public struct Profile: Codable, Identifiable, Equatable {
         self.accountID = accountID
         email = info.email
         plan = info.planType
+        credentialStorage = .localFile
         createdAt = Date()
     }
     public var identity: String { accountID + "|" + (email?.lowercased() ?? "") }

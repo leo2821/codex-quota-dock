@@ -80,18 +80,27 @@ struct AccountCheck {
         try FileManager.default.removeItem(at: loginSession)
 
         let testID = UUID()
-        let vault = CredentialVault(service: "local.codexaccounts.validation." + testID.uuidString)
         let privateRoot = root.appendingPathComponent(testID.uuidString)
         let targetDirectory = privateRoot.appendingPathComponent("codex-target")
         try PrivateFiles.createDirectory(targetDirectory)
         let target = targetDirectory.appendingPathComponent("auth.json")
         try PrivateFiles.write(data, to: target)
-        let storage = try AccountStorage(root: privateRoot.appendingPathComponent("application"), liveAuth: target, vault: vault)
+        let storage = try AccountStorage(root: privateRoot.appendingPathComponent("application"), liveAuth: target)
+        let vault = storage.vault
         let service = try AccountService(storage: storage, installation: installation)
         let profileID = try await service.importCredential(data, label: "验收账号")
-        try check(try vault.read(id: profileID) == data, "真实钥匙串写入和读取")
+        try check(try vault.read(id: profileID) == data, "真实账号的本地 auth.json 写入和读取")
+        try check(service.registry.profiles.first?.credentialStorage == .localFile, "账号记录使用本地文件存储")
+        try check(try CredentialVault(root: vault.root).read(id: profileID) == data, "重新打开存储后可以读取账号文件")
+        let accountFile = vault.fileURL(id: profileID)
+        let accountAttributes = try FileManager.default.attributesOfItem(atPath: accountFile.path)
+        try check((accountAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o600, "每个账号的 auth.json 权限为 0600")
+        let accountDirectoryAttributes = try FileManager.default.attributesOfItem(atPath: accountFile.deletingLastPathComponent().path)
+        try check((accountDirectoryAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700, "每个账号的目录权限为 0700")
         let duplicateID = try await service.importCredential(data, label: "验收账号")
         try check(duplicateID == profileID && service.registry.profiles.count == 1, "重复导入同一真实账号只保留一条记录")
+        try check(try FileManager.default.contentsOfDirectory(at: vault.root, includingPropertiesForKeys: nil).count == 1,
+                  "重复导入保留同一份账号文件")
         try service.rename(profileID, label: "当前验收账号")
         try check(try storage.load().profiles.first?.label == "当前验收账号", "账号名称持久保存")
         _ = try await service.synchronizeCurrent()
@@ -115,9 +124,37 @@ struct AccountCheck {
         try service.updatePreferences(preferences)
         try check(try storage.load().preferences.language == .simplifiedChinese, "中文语言设置持久保存")
 
+        let codexRoot = authURL.deletingLastPathComponent()
+        var preservedFiles: [URL: Data] = [:]
+        for name in ["config.toml", ".codex-global-state.json"] {
+            let source = codexRoot.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: source.path) {
+                let destination = targetDirectory.appendingPathComponent(name)
+                let contents = try Data(contentsOf: source)
+                try PrivateFiles.write(contents, to: destination)
+                preservedFiles[destination] = contents
+            }
+        }
+        let sessions = codexRoot.appendingPathComponent("sessions", isDirectory: true)
+        if let enumerator = FileManager.default.enumerator(at: sessions, includingPropertiesForKeys: [.isRegularFileKey]) {
+            while let source = enumerator.nextObject() as? URL {
+                guard source.pathExtension == "jsonl" else { continue }
+                let destinationDirectory = targetDirectory.appendingPathComponent("sessions", isDirectory: true)
+                try PrivateFiles.createDirectory(destinationDirectory)
+                let destination = destinationDirectory.appendingPathComponent(source.lastPathComponent)
+                let contents = try Data(contentsOf: source)
+                try PrivateFiles.write(contents, to: destination)
+                preservedFiles[destination] = contents
+                break
+            }
+        }
+
         let encoded = try JSONSerialization.data(withJSONObject: JSONSerialization.jsonObject(with: data), options: [.prettyPrinted, .sortedKeys])
         try storage.install(encoded, replacing: data)
         try check(try storage.readLive() == encoded, "独立目录中的真实凭据原子替换")
+        for (file, contents) in preservedFiles {
+            try check(try Data(contentsOf: file) == contents, "替换凭据后保留真实文件副本：" + file.lastPathComponent)
+        }
         var staleWriteRejected = false
         do { try storage.install(data, replacing: nil) }
         catch is AccountFailure { staleWriteRejected = true }
@@ -127,7 +164,7 @@ struct AccountCheck {
         let directoryAttributes = try FileManager.default.attributesOfItem(atPath: storage.root.path)
         try check((directoryAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700, "数据目录权限为 0700")
         var secondInstanceRejected = false
-        do { _ = try AccountStorage(root: storage.root, liveAuth: target, vault: vault) }
+        do { _ = try AccountStorage(root: storage.root, liveAuth: target) }
         catch is AccountFailure { secondInstanceRejected = true }
         try check(secondInstanceRejected, "拒绝第二个写入同一数据目录的进程")
 
@@ -137,10 +174,12 @@ struct AccountCheck {
         _ = try await service.synchronizeCurrent(importIfMissing: false)
         try service.remove(profileID)
         try check(service.registry.profiles.isEmpty && (try storage.load()).profiles.isEmpty, "移除账号并保存记录")
-        var keychainRemoved = false
+        var credentialRemoved = false
         do { _ = try vault.read(id: profileID) }
-        catch is AccountFailure { keychainRemoved = true }
-        try check(keychainRemoved, "移除账号后删除对应钥匙串项目")
+        catch is AccountFailure { credentialRemoved = true }
+        try check(credentialRemoved && !FileManager.default.fileExists(atPath: accountFile.path), "移除账号后删除对应的本地 auth.json")
+        try check(try FileManager.default.contentsOfDirectory(at: storage.runtime, includingPropertiesForKeys: nil).isEmpty,
+                  "账号操作完成后清理临时登录目录")
         try check(try Data(contentsOf: authURL) == data, "全部验证结束后原有 Codex 凭据保持一致")
         try FileManager.default.removeItem(at: privateRoot)
         print("验证完成。所有账号接口均使用本机真实 Codex 程序和现有账号。")

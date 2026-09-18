@@ -1,12 +1,15 @@
 import CryptoKit
 import Darwin
 import Foundation
-import Security
 
 public enum PrivateFiles {
     public static func createDirectory(_ url: URL) throws {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
+        let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+        guard values.isSymbolicLink != true, values.isDirectory == true else {
+            throw AccountFailure("The account data directory must be a regular directory.")
+        }
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
     }
 
@@ -31,40 +34,74 @@ public enum PrivateFiles {
 }
 
 public final class CredentialVault {
-    private let service: String
-    public init(service: String = "local.codexaccounts.credentials") { self.service = service }
-    private func query(_ id: UUID) -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service,
-         kSecAttrAccount as String: id.uuidString]
+    public let root: URL
+
+    public init(root: URL) throws {
+        self.root = root
+        try PrivateFiles.createDirectory(root)
     }
+
+    public func fileURL(id: UUID) -> URL {
+        root.appendingPathComponent(id.uuidString, isDirectory: true).appendingPathComponent("auth.json")
+    }
+
     public func save(_ data: Data, id: UUID) throws {
         _ = try AuthDocument.read(data)
-        let status = SecItemUpdate(query(id) as CFDictionary,
-                                   [kSecValueData as String: data] as CFDictionary)
-        if status == errSecItemNotFound {
-            var attributes = query(id)
-            attributes[kSecValueData as String] = data
-            attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            let inserted = SecItemAdd(attributes as CFDictionary, nil)
-            guard inserted == errSecSuccess else { throw failure(inserted) }
-        } else if status != errSecSuccess { throw failure(status) }
+        try PrivateFiles.createDirectory(root)
+        let url = fileURL(id: id)
+        try PrivateFiles.createDirectory(url.deletingLastPathComponent())
+        try PrivateFiles.write(data, to: url)
+        guard try read(id: id) == data else {
+            throw AccountFailure("Account file verification failed after saving.")
+        }
     }
+
     public func read(id: UUID) throws -> Data {
-        var attributes = query(id)
-        attributes[kSecReturnData as String] = true
-        attributes[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(attributes as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else { throw failure(status) }
+        let url = fileURL(id: id)
+        for directory in [root, url.deletingLastPathComponent()] {
+            guard FileManager.default.fileExists(atPath: directory.path) else {
+                throw AccountFailure("The saved auth.json is missing. Sign in to this account again.")
+            }
+            let values = try directory.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+            guard values.isSymbolicLink != true, values.isDirectory == true else {
+                throw AccountFailure("The account data directory must be a regular directory.")
+            }
+        }
+        let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            if errno == ENOENT {
+                throw AccountFailure("The saved auth.json is missing. Sign in to this account again.")
+            }
+            throw AccountFailure("Unable to open the saved auth.json (system error %@).", String(errno))
+        }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        var attributes = stat()
+        guard fstat(descriptor, &attributes) == 0,
+              attributes.st_mode & S_IFMT == S_IFREG,
+              attributes.st_uid == geteuid(), attributes.st_mode & 0o777 == 0o600 else {
+            throw AccountFailure("The saved auth.json must be a regular file owned by this macOS user with permissions 0600.")
+        }
+        let data = try handle.readToEnd() ?? Data()
+        try handle.close()
+        _ = try AuthDocument.read(data)
         return data
     }
+
     public func remove(id: UUID) throws {
-        let status = SecItemDelete(query(id) as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else { throw failure(status) }
-    }
-    private func failure(_ status: OSStatus) -> AccountFailure {
-        AccountFailure("Keychain operation failed (%@). Unlock the macOS Keychain and allow access.", String(status))
+        let url = fileURL(id: id)
+        guard FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path) else { return }
+        for directory in [root, url.deletingLastPathComponent()] {
+            let values = try directory.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+            guard values.isSymbolicLink != true, values.isDirectory == true else {
+                throw AccountFailure("The account data directory must be a regular directory.")
+            }
+        }
+        guard unlink(url.path) == 0 || errno == ENOENT else {
+            throw AccountFailure("Unable to remove the saved auth.json (system error %@).", String(errno))
+        }
+        guard rmdir(url.deletingLastPathComponent().path) == 0 else {
+            throw AccountFailure("Unable to remove the account directory (system error %@).", String(errno))
+        }
     }
 }
 
@@ -76,19 +113,30 @@ public final class AccountStorage {
     private let registryURL: URL
     private var lockDescriptor: Int32 = -1
 
-    public init(root: URL, liveAuth: URL, vault: CredentialVault = CredentialVault()) throws {
+    public init(root: URL, liveAuth: URL) throws {
         self.root = root
         self.liveAuth = liveAuth
-        self.vault = vault
         runtime = root.appendingPathComponent("runtime", isDirectory: true)
         registryURL = root.appendingPathComponent("accounts.json")
         try PrivateFiles.createDirectory(root)
         let lock = root.appendingPathComponent("application.lock")
-        lockDescriptor = open(lock.path, O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
-        guard lockDescriptor >= 0, flock(lockDescriptor, LOCK_EX | LOCK_NB) == 0 else {
+        let descriptor = open(lock.path, O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
+        guard descriptor >= 0 else {
+            throw AccountFailure("Unable to open the account data lock (system error %@).", String(errno))
+        }
+        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+            close(descriptor)
             throw AccountFailure("The account manager is already running. Open its window from the menu bar.")
         }
-        try PrivateFiles.createDirectory(runtime)
+        do {
+            vault = try CredentialVault(root: root.appendingPathComponent("credentials", isDirectory: true))
+            try PrivateFiles.createDirectory(runtime)
+        } catch {
+            flock(descriptor, LOCK_UN)
+            close(descriptor)
+            throw error
+        }
+        lockDescriptor = descriptor
     }
 
     deinit {

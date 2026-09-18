@@ -13,7 +13,7 @@ struct AddAccountSheet: View {
             }
             Text(model.strings("Choose how to add your ChatGPT account."))
                 .font(.system(size: 13)).foregroundStyle(.secondary)
-            action(model.strings("Sign in to a new ChatGPT account"), detail: model.strings("Open your browser and save the account after sign-in."), symbol: "person.crop.circle.badge.plus") {
+            action(model.strings("Sign in to a new ChatGPT account"), detail: model.strings("Sign in in your browser to automatically save this account's auth.json."), symbol: "person.crop.circle.badge.plus") {
                 dismiss()
                 Task { await model.login() }
             }
@@ -25,7 +25,7 @@ struct AddAccountSheet: View {
                 dismiss()
                 Task { await model.importFile() }
             }
-            Label(model.strings("Credentials are stored in your Mac's Keychain"), systemImage: "lock.shield")
+            Label(model.strings("Each account is saved as a private local auth.json file"), systemImage: "lock.shield")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
         }.padding(28).frame(width: 480).tint(Palette.accent)
     }

@@ -30,7 +30,7 @@ Use accounts you are authorized to access and comply with the applicable [OpenAI
 
 Click **Add account** at the top right of the main window and choose a method:
 
-1. **Sign in to a new ChatGPT account**: sign in through the browser. The app saves the account when sign-in completes. Select the intended account on the sign-in page when adding another account.
+1. **Sign in to a new ChatGPT account**: complete sign-in in your default browser, such as Chrome. The app automatically saves a separate local `auth.json` for that account. Select the intended account on the sign-in page when adding another account.
 2. **Import current Codex account**: save the account already signed in on this Mac.
 3. **Import from auth.json**: select one or more existing Codex account files.
 
@@ -60,11 +60,21 @@ The app is designed for Codex configurations that store authentication in `auth.
 
 Codex manages sign-in renewal for the current account. If another account cannot retrieve its quota, use **Renew credentials** in its menu. When a new sign-in is required, choose **Sign in again** and complete browser authentication.
 
-Credentials are stored in macOS Keychain. Account names, preferences, and recent quota results are stored at:
+Each account's credentials are saved at:
+
+`~/Library/Application Support/CodexAccounts/credentials/<profileID>/auth.json`
+
+Quota queries, credential renewal, and account switching read these local files. **Settings → Account data → Show account files** opens their location. Directories use `0700` permissions and credential files use `0600`; sign-in tokens are unencrypted and accessible to programs running as your macOS user. Keep these files private and outside source control and release packages.
+
+Account names, preferences, and recent quota results are stored at:
 
 `~/Library/Application Support/CodexAccounts/accounts.json`
 
-The account API runs in separate sessions inside that directory's `runtime` folder. Operations that need file-based credentials use directories with `0700` permissions and files with `0600` permissions, then clean up after completion. Quota queries use separate external-token sessions.
+The account API runs in separate sessions inside that directory's `runtime` folder. The app copies the completed sign-in credentials into the account's permanent file before cleaning up the login session. Quota queries use separate external-token sessions.
+
+Existing accounts saved in Keychain show a **Migrate saved accounts** button. Migration reads each saved account, verifies its identity, writes and verifies its local file, and records completion. macOS may ask for Keychain access during this operation. Completed accounts use local files on subsequent launches and refreshes. The original Keychain copies are retained. Signing in to an existing account again also creates its local file. The current Codex account is saved automatically from its existing `auth.json`.
+
+The desktop uses its existing Codex data directory. Switching updates its `auth.json`; the app's file operations preserve local conversation files, task databases, project settings, and project folders. Restarting Codex can interrupt running work.
 
 ## Build from source
 
@@ -78,7 +88,7 @@ The result is `dist/Codex Quota Dock.app`, including both language resources. Bu
 
 The Swift package has three targets:
 
-- `AccountCore`: accounts, quotas, Keychain, storage, localization, and Codex communication.
+- `AccountCore`: accounts, quotas, local credential files, account migration, localization, and Codex communication.
 - `CodexAccounts`: the main window, add-account sheet, menu bar, and settings.
 - `AccountCheck`: integration checks using the installed Codex executable and an existing account.
 
@@ -90,11 +100,13 @@ work/build/debug/account-check "$PWD/work/validation" "$HOME/.codex/auth.json"
 python3 Scripts/check-localization.py "$PWD"
 ```
 
-The checker queries real quotas, starts and cancels a separate sign-in flow, and verifies storage, deduplication, replacement, and cleanup with dedicated Keychain items and isolated directories. It confirms that the original Codex credentials remain byte-for-byte unchanged.
+The checker queries real quotas, starts and cancels a separate sign-in flow, and verifies local credential storage, permissions, reopening, deduplication, replacement, and cleanup in isolated directories. When local history and project settings are available, copies are checked for preservation during credential replacement. It confirms that the original Codex credentials remain byte-for-byte unchanged.
 
 Checks also cover both language resources, translated quota windows and real sign-in errors, and persisted language preferences.
 
-Version 1.1.0 was built and launched on macOS 26.6.2 with Apple Silicon and Codex CLI `0.155.0-alpha.2.6`, passing 34 integration checks. Three real accounts refreshed successfully. The English account page, add-account options, switching confirmation, and both language settings were checked through macOS accessibility. Restarting the app retained the selected English interface. All 160 translation entries passed resource and format-argument checks. A full desktop switch between two different real accounts has not yet been validated, so builds are provided as prereleases.
+Version 1.2.0 passed 43 integration checks with a real account and the installed Codex app-server. All 176 English and Simplified Chinese resource entries passed format and completeness checks. Release compilation, code-signature verification, and `Info.plist` validation passed on Apple Silicon with macOS 26.6.2.
+
+A full desktop switch between two different real accounts and verification of all existing chats after that switch have not yet been completed, so builds are provided as prereleases.
 
 For development, `CODEX_ACCOUNTS_DATA_DIR` selects a separate app data directory, and `CODEX_ACCOUNTS_TARGET_DIR` selects the target Codex directory for account switching. Keep the defaults for normal use.
 

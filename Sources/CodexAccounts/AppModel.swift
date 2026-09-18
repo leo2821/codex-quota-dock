@@ -45,6 +45,7 @@ final class AppModel: ObservableObject {
     var strings: Localizer { Localizer(language: preferences.language) }
     var statusText: String { status.text(using: strings) }
     var current: Profile? { profiles.first { $0.id == activeID } }
+    var pendingCredentialMigrations: Int { profiles.filter { $0.credentialStorage != .localFile }.count }
     var visibleProfiles: [Profile] {
         sortedProfiles.filter {
             search.isEmpty || $0.label.localizedCaseInsensitiveContains(search) ||
@@ -145,7 +146,9 @@ final class AppModel: ObservableObject {
         do {
             let id = try await service.beginLogin { url in
                 self.loginURL = url
-                NSWorkspace.shared.open(url)
+                guard NSWorkspace.shared.open(url) else {
+                    throw AccountFailure("Unable to open the browser. Open the sign-in page and try again.")
+                }
             }
             try await service.refresh(id)
             status = existingIDs.contains(id) ? "Existing account credentials updated" : "New account added"
@@ -155,6 +158,24 @@ final class AppModel: ObservableObject {
 
     func cancelLogin() async {
         do { try await service?.cancelLogin() } catch { fail(error) }
+    }
+
+    func migrateAccounts() async {
+        await perform("Migrating saved accounts") { service in
+            for profile in service.registry.profiles where profile.credentialStorage != .localFile {
+                self.refreshingID = profile.id
+                self.status = .init("Migrating %@", self.displayLabel(profile))
+                try await service.migrateCredential(profile.id)
+                self.syncState()
+            }
+        }
+        refreshingID = nil
+        if pendingCredentialMigrations == 0 { await refreshAll() }
+    }
+
+    func openAccountFiles() {
+        guard let service else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([service.storage.vault.root])
     }
 
     func importCurrent() async {

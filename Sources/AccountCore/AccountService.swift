@@ -37,6 +37,7 @@ public final class AccountService {
         if let index = registry.profiles.firstIndex(where: { $0.identity == identity }) {
             let id = registry.profiles[index].id
             try storage.vault.save(data, id: id)
+            registry.profiles[index].credentialStorage = .localFile
             registry.profiles[index].plan = info.planType
             activeID = id
             try storage.save(registry)
@@ -52,6 +53,9 @@ public final class AccountService {
         }
         let profile = registry.profiles[index]
         do {
+            guard profile.credentialStorage == .localFile else {
+                throw AccountFailure("Migrate this saved account or sign in again to create its local auth.json.")
+            }
             let data = try storage.vault.read(id: id)
             let document = try AuthDocument.read(data)
             guard document.accountID == profile.accountID else { throw AccountFailure("Saved credentials do not match the account record.") }
@@ -75,6 +79,9 @@ public final class AccountService {
     public func updateCredential(_ id: UUID) async throws {
         guard id != activeID else { throw AccountFailure("Codex manages the current account's sign-in. Refresh the account details.") }
         guard let profile = registry.profiles.first(where: { $0.id == id }) else { throw AccountFailure("Account not found.") }
+        guard profile.credentialStorage == .localFile else {
+            throw AccountFailure("Migrate this saved account or sign in again to create its local auth.json.")
+        }
         let original = try storage.vault.read(id: id)
         let updated: Data = try await session(auth: original) { client in
             _ = try await client.request("account/read", params: ["refreshToken": true])
@@ -91,7 +98,7 @@ public final class AccountService {
         try await refresh(id)
     }
 
-    public func beginLogin(openURL: (URL) -> Void) async throws -> UUID {
+    public func beginLogin(openURL: (URL) throws -> Void) async throws -> UUID {
         guard loginClient == nil else { throw AccountFailure("Another account is signing in.") }
         let home = try storage.makeSession()
         let client = try CodexClient(installation: installation, home: home)
@@ -104,7 +111,7 @@ public final class AccountService {
                   let host = url.host, ["auth.openai.com", "auth0.openai.com", "chatgpt.com"].contains(host) else {
                 throw AccountFailure("Codex returned an unrecognized sign-in address.")
             }
-            openURL(url)
+            try openURL(url)
             try await client.waitForLogin(id: start.loginId)
             let info = try await client.readAccount()
             let data = try Data(contentsOf: home.appendingPathComponent("auth.json"))
@@ -127,6 +134,25 @@ public final class AccountService {
     public func cancelLogin() async throws {
         guard let client = loginClient, let id = loginID else { return }
         try await client.cancelLogin(id: id)
+    }
+
+    public func migrateCredential(_ id: UUID) async throws {
+        guard let index = registry.profiles.firstIndex(where: { $0.id == id }) else {
+            throw AccountFailure("Account not found.")
+        }
+        let profile = registry.profiles[index]
+        guard profile.credentialStorage != .localFile else { return }
+        let data = try await LegacyKeychain.read(id: id)
+        let document = try AuthDocument.read(data)
+        let info = try await identify(data)
+        guard document.accountID == profile.accountID, info.email == profile.email else {
+            throw AccountFailure("Saved credentials do not match the account record.")
+        }
+        try storage.vault.save(data, id: id)
+        registry.profiles[index].credentialStorage = .localFile
+        registry.profiles[index].lastError = nil
+        registry.profiles[index].localizedError = nil
+        try storage.save(registry)
     }
 
     public func rename(_ id: UUID, label: String) throws {
@@ -157,6 +183,9 @@ public final class AccountService {
         _ = try await synchronizeCurrent()
         guard id != activeID else { return }
         guard let target = registry.profiles.first(where: { $0.id == id }) else { throw AccountFailure("Account not found.") }
+        guard target.credentialStorage == .localFile else {
+            throw AccountFailure("Migrate this saved account or sign in again to create its local auth.json.")
+        }
         let targetData = try storage.vault.read(id: id)
         let targetInfo = try await identify(targetData)
         let targetDocument = try AuthDocument.read(targetData)
@@ -197,6 +226,7 @@ public final class AccountService {
         if let index = registry.profiles.firstIndex(where: { $0.identity == identity }) {
             let id = registry.profiles[index].id
             try storage.vault.save(data, id: id)
+            registry.profiles[index].credentialStorage = .localFile
             registry.profiles[index].plan = info.planType
             registry.profiles[index].lastError = nil
             registry.profiles[index].localizedError = nil
