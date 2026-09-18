@@ -83,7 +83,7 @@ work/build/debug/account-check "$PWD/work/validation" "$HOME/.codex/auth.json"
 
 验证程序查询真实额度，启动并取消独立的登录流程，在专属钥匙串项目和独立目录中检查保存、去重、替换及清理。原有 Codex 凭据在结束时逐字节核验。
 
-当前发布包已经在 macOS 26.6.2、Apple Silicon、Codex CLI `0.155.0-alpha.2.6` 上完成编译、启动和 27 项单账号集成检查。两个不同真实账号之间的完整桌面切换尚未完成验证，当前版本以预发布形式提供。
+当前发布包已经在 macOS 26.6.2、Apple Silicon、Codex CLI `0.155.0-alpha.2.6` 上完成编译、启动和 27 项单账号集成检查。主窗口中的三个真实账号均已成功刷新额度，添加账号面板的三种入口已完成界面检查。两个不同真实账号之间的完整桌面切换尚未完成验证，当前版本以预发布形式提供。
 
 开发时可设置 `CODEX_ACCOUNTS_DATA_DIR` 指定应用数据目录，设置 `CODEX_ACCOUNTS_TARGET_DIR` 指定账号切换的目标 Codex 目录。正式使用时保持默认即可。
 
