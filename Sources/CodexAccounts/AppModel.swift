@@ -4,6 +4,21 @@ import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum AppStatus: ExpressibleByStringLiteral {
+    case message(String, [String])
+    case refreshed(Date)
+
+    init(_ key: String, _ arguments: String...) { self = .message(key, arguments) }
+    init(stringLiteral value: String) { self = .message(value, []) }
+
+    func text(using strings: Localizer) -> String {
+        switch self {
+        case let .message(key, arguments): return strings.format(key, arguments: arguments)
+        case let .refreshed(date): return strings("All accounts refreshed · %@", strings.time(date))
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var profiles: [Profile] = []
@@ -11,7 +26,7 @@ final class AppModel: ObservableObject {
     @Published var activeID: UUID?
     @Published var busy = false
     @Published var refreshingID: UUID?
-    @Published var status = "正在读取账号"
+    @Published var status: AppStatus = "Loading accounts"
     @Published var errorMessage: String?
     @Published var search = ""
     @Published var section = "accounts"
@@ -27,6 +42,8 @@ final class AppModel: ObservableObject {
     private var lastRefresh: Date?
     private var timer: Task<Void, Never>?
 
+    var strings: Localizer { Localizer(language: preferences.language) }
+    var statusText: String { status.text(using: strings) }
     var current: Profile? { profiles.first { $0.id == activeID } }
     var visibleProfiles: [Profile] {
         sortedProfiles.filter {
@@ -93,7 +110,7 @@ final class AppModel: ObservableObject {
         guard let service, !busy else { return }
         busy = true
         defer { busy = false; refreshingID = nil; syncState() }
-        status = "正在刷新全部账号"
+        status = "Refreshing all accounts"
         do {
             _ = try await service.synchronizeCurrent()
             syncState()
@@ -105,14 +122,14 @@ final class AppModel: ObservableObject {
                 syncState()
             }
             lastRefresh = Date()
-            if profiles.isEmpty { status = "添加账号即可查看额度" }
-            else if failures > 0 { status = "\(failures) 个账号需要检查，详情见账号卡片" }
-            else { status = "全部账号已刷新 · \(Date().formatted(date: .omitted, time: .shortened))" }
+            if profiles.isEmpty { status = "Add an account to view its quota" }
+            else if failures > 0 { status = .init("Accounts needing attention: %@. See their cards for details.", String(failures)) }
+            else { status = .refreshed(Date()) }
         } catch { fail(error) }
     }
 
     func refreshOne(_ profile: Profile) async {
-        await perform("正在刷新 \(profile.label)") { service in
+        await perform(.init("Refreshing %@", profile.label)) { service in
             _ = try await service.synchronizeCurrent()
             try await service.refresh(profile.id)
         }
@@ -123,7 +140,7 @@ final class AppModel: ObservableObject {
         let existingIDs = Set(profiles.map(\.id))
         busy = true
         isLoggingIn = true
-        status = "请在浏览器中完成 ChatGPT 登录"
+        status = "Complete ChatGPT sign-in in your browser"
         defer { busy = false; isLoggingIn = false; loginURL = nil; syncState() }
         do {
             let id = try await service.beginLogin { url in
@@ -131,8 +148,8 @@ final class AppModel: ObservableObject {
                 NSWorkspace.shared.open(url)
             }
             try await service.refresh(id)
-            status = existingIDs.contains(id) ? "该账号已存在，登录信息已更新" : "新账号已添加"
-        } catch is CancellationError { status = "登录已取消" }
+            status = existingIDs.contains(id) ? "Existing account credentials updated" : "New account added"
+        } catch is CancellationError { status = "Sign-in cancelled" }
         catch { fail(error) }
     }
 
@@ -141,9 +158,9 @@ final class AppModel: ObservableObject {
     }
 
     func importCurrent() async {
-        await perform("正在导入当前账号") { service in
-            guard let data = try service.storage.readLive() else { throw AccountFailure("当前 Codex 尚未登录。") }
-            let id = try await service.importCredential(data, label: "当前账号")
+        await perform("Importing the current account") { service in
+            guard let data = try service.storage.readLive() else { throw AccountFailure("Codex is not signed in.") }
+            let id = try await service.importCredential(data, label: "")
             _ = try await service.synchronizeCurrent()
             try await service.refresh(id)
         }
@@ -152,12 +169,13 @@ final class AppModel: ObservableObject {
     func importFile() async {
         guard !busy else { return }
         let panel = NSOpenPanel()
-        panel.title = "选择 Codex 账号的 auth.json"
+        panel.title = strings("Choose a Codex account's auth.json")
+        panel.prompt = strings("Import")
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         guard await panel.begin() == .OK else { return }
-        await perform("正在导入账号") { service in
+        await perform("Importing accounts") { service in
             for url in panel.urls {
                 let data = try Data(contentsOf: url)
                 let id = try await service.importCredential(data, label: "")
@@ -174,11 +192,11 @@ final class AppModel: ObservableObject {
 
     func switchNow(_ profile: Profile) async {
         pendingSwitch = nil
-        await perform("正在切换到 \(profile.label)") { service in try await service.switchAccount(profile.id) }
+        await perform(.init("Switching to %@", profile.label)) { service in try await service.switchAccount(profile.id) }
     }
 
     func renew(_ profile: Profile) async {
-        await perform("正在更新账号登录") { service in
+        await perform("Renewing account credentials") { service in
             _ = try await service.synchronizeCurrent()
             try await service.updateCredential(profile.id)
         }
@@ -192,7 +210,7 @@ final class AppModel: ObservableObject {
 
     func remove(_ profile: Profile) {
         guard !busy else { return }
-        do { try service?.remove(profile.id); pendingRemoval = nil; syncState(); status = "账号已移除" }
+        do { try service?.remove(profile.id); pendingRemoval = nil; syncState(); status = "Account removed" }
         catch { fail(error) }
     }
 
@@ -205,7 +223,7 @@ final class AppModel: ObservableObject {
             if enabled { try SMAppService.mainApp.register() }
             else { try SMAppService.mainApp.unregister() }
             launchAtLogin = SMAppService.mainApp.status == .enabled
-            if enabled && !launchAtLogin { status = "请在系统设置的登录项中允许此应用" }
+            if enabled && !launchAtLogin { status = "Allow this app in System Settings → Login Items" }
         } catch { fail(error) }
     }
 
@@ -214,7 +232,7 @@ final class AppModel: ObservableObject {
     }
 
     func displayEmail(_ profile: Profile) -> String {
-        guard let email = profile.email else { return "ChatGPT 订阅账号" }
+        guard let email = profile.email else { return strings("ChatGPT subscription account") }
         guard preferences.maskEmails else { return email }
         let parts = email.split(separator: "@", maxSplits: 1)
         return parts.count == 2 ? String(parts[0].prefix(1)) + "••••@" + parts[1] : "••••••"
@@ -229,12 +247,12 @@ final class AppModel: ObservableObject {
         return usage.availablePercent ?? -1
     }
 
-    private func perform(_ message: String, operation: (AccountService) async throws -> Void) async {
+    private func perform(_ message: AppStatus, operation: (AccountService) async throws -> Void) async {
         guard let service, !busy else { return }
         busy = true
         status = message
         defer { busy = false; syncState() }
-        do { try await operation(service); status = "操作完成" }
+        do { try await operation(service); status = "Done" }
         catch { fail(error) }
     }
 
@@ -246,7 +264,7 @@ final class AppModel: ObservableObject {
     }
 
     private func fail(_ error: Error) {
-        errorMessage = error.localizedDescription
-        status = "操作未完成，请查看提示"
+        errorMessage = (error as? AccountFailure)?.description(using: strings) ?? error.localizedDescription
+        status = "Unable to complete the operation. Check the message."
     }
 }

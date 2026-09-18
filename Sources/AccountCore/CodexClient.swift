@@ -18,7 +18,7 @@ public struct CodexInstallation {
                 return CodexInstallation(application: application, executable: executable, bundleID: "com.openai.codex")
             }
         }
-        throw AccountFailure("未找到 Codex 桌面应用，请安装包含 Codex 的 ChatGPT 应用。")
+        throw AccountFailure("Codex desktop was not found. Install the ChatGPT app that includes Codex.")
     }
 }
 
@@ -59,23 +59,23 @@ public final class CodexClient {
                     guard let self, !self.stopped else { break }
                     try self.receive(Data(line.utf8))
                 }
-                self?.failAll(AccountFailure("Codex 连接已经关闭。"))
+                self?.failAll(AccountFailure("The Codex connection is closed."))
             } catch {
-                self?.failAll(AccountFailure("Codex 返回的数据无法读取。请确认已安装的版本支持账号接口。"))
+                self?.failAll(AccountFailure("Unable to read the Codex response. Check that your installed version supports the account API."))
             }
         }
     }
 
     public func initialize() async throws {
         _ = try await request("initialize", params: [
-            "clientInfo": ["name": "codex_accounts", "title": "QuotaDock", "version": "1.0.0"],
+            "clientInfo": ["name": "codex_accounts", "title": "Codex Quota Dock", "version": "1.1.0"],
             "capabilities": ["experimentalApi": true]
         ])
         try send(["method": "initialized", "params": [:]])
     }
 
     public func request(_ method: String, params: [String: Any] = [:], timeout: Double = 25) async throws -> Data {
-        guard !stopped, process.isRunning else { throw AccountFailure("Codex 连接已经关闭。") }
+        guard !stopped, process.isRunning else { throw AccountFailure("The Codex connection is closed.") }
         let id = nextID
         nextID += 1
         return try await withTaskCancellationHandler {
@@ -84,7 +84,7 @@ public final class CodexClient {
                 methods[id] = method
                 timers[id] = Task { [weak self] in
                     do { try await Task.sleep(for: .seconds(timeout)) } catch { return }
-                    self?.complete(id, result: .failure(AccountFailure("Codex 请求超时：\(method)。请检查网络连接。")))
+                    self?.complete(id, result: .failure(AccountFailure("Codex request timed out (%@). Check your network connection.", method)))
                 }
                 do { try send(["id": id, "method": method, "params": params]) }
                 catch { complete(id, result: .failure(error)) }
@@ -98,7 +98,7 @@ public final class CodexClient {
         let data = try await request("account/read", params: ["refreshToken": false])
         let result = try JSONDecoder().decode(AccountReadResponse.self, from: data)
         guard let account = result.account, account.type == "chatgpt" || account.type == "chatgptAuthTokens" else {
-            throw AccountFailure("该账号尚未通过 ChatGPT 登录。")
+            throw AccountFailure("This account is not signed in with ChatGPT.")
         }
         return account
     }
@@ -137,7 +137,7 @@ public final class CodexClient {
             }
         }
         guard completion.loginId == id, completion.success else {
-            throw AccountFailure("账号登录未完成。请重新打开浏览器登录。")
+            throw AccountFailure("Sign-in was not completed. Open the browser and sign in again.")
         }
     }
 
@@ -166,12 +166,12 @@ public final class CodexClient {
 
     private func receive(_ data: Data) throws {
         guard let message = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw AccountFailure("Codex 响应格式无效。")
+            throw AccountFailure("Invalid Codex response format.")
         }
         if let method = message["method"] as? String {
             if let id = message["id"] {
                 try send(["id": id, "error": ["code": -32601,
-                     "message": "请重新登录该账号以更新凭据。"]])
+                     "message": "Sign in again to renew this account's credentials."]])
                 return
             }
             if method == "account/login/completed", let params = message["params"] {
@@ -185,11 +185,11 @@ public final class CodexClient {
         guard let id = message["id"] as? Int else { return }
         if let error = message["error"] as? [String: Any] {
             let code = error["code"] as? Int ?? -1
-            let method = methods[id] ?? "未知请求"
-            complete(id, result: .failure(AccountFailure("Codex 请求失败（\(method)，\(code)）。请检查网络或重新登录该账号。")))
+            let method = methods[id] ?? "unknown"
+            complete(id, result: .failure(AccountFailure("Codex request failed (%@, %@). Check your network or sign in again.", method, String(code))))
         } else if let result = message["result"] {
             complete(id, result: .success(try JSONSerialization.data(withJSONObject: result)))
-        } else { complete(id, result: .failure(AccountFailure("Codex 响应缺少结果。"))) }
+        } else { complete(id, result: .failure(AccountFailure("The Codex response has no result."))) }
     }
 
     private func complete(_ id: Int, result: Result<Data, Error>) {

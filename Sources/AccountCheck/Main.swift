@@ -23,6 +23,11 @@ struct AccountCheck {
         try PrivateFiles.createDirectory(root)
         let data = try Data(contentsOf: authURL)
         let document = try AuthDocument.read(data)
+        let english = Localizer(language: .english)
+        let chinese = Localizer(language: .simplifiedChinese)
+        try check(english("Add account") == "Add account" && chinese("Add account") == "添加账号", "中英文语言资源可以读取")
+        try check(english.accountCount(1) == "1 account" && english.accountCount(2) == "2 accounts"
+                  && chinese.accountCount(2) == "2 个账号", "账号数量的中英文显示")
         let installation = try CodexInstallation.discover()
         let session = root.appendingPathComponent(UUID().uuidString)
         try PrivateFiles.createDirectory(session)
@@ -43,7 +48,9 @@ struct AccountCheck {
                     try check(remaining == min(100, max(0, 100 - used)), "已用百分比换算为剩余额度")
                 }
                 if let date = window.resetDate {
-                    try check(window.countdown(at: date) == "等待刷新确认", "到达真实重置时间后等待新查询")
+                    try check(window.countdown(at: date, using: chinese) == "等待刷新确认"
+                              && window.countdown(at: date, using: english) == "Awaiting refresh", "真实重置时间的中英文状态")
+                    try check(window.title(using: chinese) != window.title(using: english), "真实额度周期使用所选语言")
                     try check(window.needsRefresh(at: date), "重置时间的刷新判断")
                     try check(!usage.isCurrent(at: date.addingTimeInterval(1)), "过期的真实额度记录标记为历史查询")
                 }
@@ -61,7 +68,13 @@ struct AccountCheck {
         try await loginClient.cancelLogin(id: start.loginId)
         var cancellationObserved = false
         do { try await loginClient.waitForLogin(id: start.loginId) }
-        catch is AccountFailure { cancellationObserved = true }
+        catch let error as AccountFailure {
+            cancellationObserved = true
+            try check(error.description(using: english) == "Sign-in was not completed. Open the browser and sign in again."
+                      && error.description(using: chinese) == "账号登录未完成。请重新打开浏览器登录。", "真实登录取消错误使用所选语言")
+            let savedError = try JSONEncoder().encode(error)
+            try check(try JSONDecoder().decode(AccountFailure.self, from: savedError) == error, "错误记录保存后仍可切换语言")
+        }
         try check(cancellationObserved, "真实登录取消通知")
         try await loginClient.stop()
         try FileManager.default.removeItem(at: loginSession)
@@ -94,8 +107,13 @@ struct AccountCheck {
         var preferences = Preferences()
         preferences.refreshSeconds = 120
         preferences.maskEmails = true
+        preferences.language = .english
         try service.updatePreferences(preferences)
         try check(try storage.load().preferences.refreshSeconds == 120, "应用设置持久保存")
+        try check(try storage.load().preferences.language == .english, "英文语言设置持久保存")
+        preferences.language = .simplifiedChinese
+        try service.updatePreferences(preferences)
+        try check(try storage.load().preferences.language == .simplifiedChinese, "中文语言设置持久保存")
 
         let encoded = try JSONSerialization.data(withJSONObject: JSONSerialization.jsonObject(with: data), options: [.prettyPrinted, .sortedKeys])
         try storage.install(encoded, replacing: data)

@@ -1,9 +1,16 @@
 import Foundation
 
-public struct AccountFailure: LocalizedError {
+public struct AccountFailure: LocalizedError, Codable, Equatable {
     public let message: String
-    public init(_ message: String) { self.message = message }
-    public var errorDescription: String? { message }
+    public let arguments: [String]
+    public init(_ message: String, _ arguments: String...) {
+        self.message = message
+        self.arguments = arguments
+    }
+    public func description(using strings: Localizer) -> String {
+        strings.format(message, arguments: arguments)
+    }
+    public var errorDescription: String? { description(using: Localizer()) }
 }
 
 public struct AuthDocument: Decodable {
@@ -21,7 +28,7 @@ public struct AuthDocument: Decodable {
         let document = try JSONDecoder().decode(AuthDocument.self, from: data)
         guard let tokens = document.tokens, !tokens.access_token.isEmpty,
               let accountID = tokens.account_id, !accountID.isEmpty else {
-            throw AccountFailure("请选择通过 ChatGPT 登录的 Codex 账号。该文件缺少订阅账号凭据。")
+            throw AccountFailure("Choose a Codex account signed in with ChatGPT. This file has no subscription account credentials.")
         }
         return document
     }
@@ -48,21 +55,22 @@ public struct QuotaWindow: Codable, Equatable, Identifiable {
         usedPercent.map { min(100, max(0, 100 - $0)) }
     }
     public var resetDate: Date? { resetsAt.map(Date.init(timeIntervalSince1970:)) }
-    public var title: String {
-        guard let minutes = windowDurationMins else { return "额度周期" }
-        if minutes == 10080 { return "每周额度" }
-        if minutes % 1440 == 0 { return "\(minutes / 1440) 天额度" }
-        if minutes % 60 == 0 { return "\(minutes / 60) 小时额度" }
-        return "\(minutes) 分钟额度"
+    public var title: String { title(using: Localizer()) }
+    public func title(using strings: Localizer) -> String {
+        guard let minutes = windowDurationMins else { return strings("Quota window") }
+        if minutes == 10080 { return strings("Weekly limit") }
+        if minutes % 1440 == 0 { return strings("%@-day limit", String(minutes / 1440)) }
+        if minutes % 60 == 0 { return strings("%@-hour limit", String(minutes / 60)) }
+        return strings("%@-minute limit", String(minutes))
     }
-    public func countdown(at now: Date) -> String {
-        guard let resetDate else { return "重置时间未知" }
+    public func countdown(at now: Date, using strings: Localizer = Localizer()) -> String {
+        guard let resetDate else { return strings("Reset time unknown") }
         let seconds = Int(ceil(resetDate.timeIntervalSince(now)))
-        if seconds <= 0 { return "等待刷新确认" }
+        if seconds <= 0 { return strings("Awaiting refresh") }
         let minutes = max(1, Int(ceil(Double(seconds) / 60)))
-        if minutes >= 1440 { return "\(minutes / 1440) 天 \(minutes % 1440 / 60) 小时后" }
-        if minutes >= 60 { return "\(minutes / 60) 小时 \(minutes % 60) 分钟后" }
-        return "\(minutes) 分钟后"
+        if minutes >= 1440 { return strings("Resets in %@d %@h", String(minutes / 1440), String(minutes % 1440 / 60)) }
+        if minutes >= 60 { return strings("Resets in %@h %@m", String(minutes / 60), String(minutes % 60)) }
+        return strings("Resets in %@ min", String(minutes))
     }
     public func needsRefresh(at now: Date) -> Bool {
         resetDate.map { $0 <= now } ?? false
@@ -140,6 +148,7 @@ public struct Profile: Codable, Identifiable, Equatable {
     public var plan: String?
     public var usage: UsageSnapshot?
     public var lastError: String?
+    public var localizedError: AccountFailure?
     public let createdAt: Date
     public init(label: String, accountID: String, info: AccountInfo) {
         id = UUID()
@@ -157,7 +166,21 @@ public struct Preferences: Codable {
     public var confirmSwitch: Bool = true
     public var maskEmails: Bool = false
     public var sortByQuota: Bool = false
+    public var language: AppLanguage = .system
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case refreshSeconds, confirmSwitch, maskEmails, sortByQuota, language
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        refreshSeconds = try values.decode(Int.self, forKey: .refreshSeconds)
+        confirmSwitch = try values.decode(Bool.self, forKey: .confirmSwitch)
+        maskEmails = try values.decode(Bool.self, forKey: .maskEmails)
+        sortByQuota = try values.decode(Bool.self, forKey: .sortByQuota)
+        language = try values.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
+    }
 }
 
 public struct Registry: Codable {

@@ -41,38 +41,40 @@ public final class AccountService {
             activeID = id
             try storage.save(registry)
         } else if importIfMissing {
-            activeID = try saveCredential(data, document: document, info: info, label: "当前账号")
+            activeID = try saveCredential(data, document: document, info: info, label: "")
         } else { activeID = nil }
         return activeID
     }
 
     public func refresh(_ id: UUID) async throws {
         guard let index = registry.profiles.firstIndex(where: { $0.id == id }) else {
-            throw AccountFailure("未找到该账号。")
+            throw AccountFailure("Account not found.")
         }
         let profile = registry.profiles[index]
         do {
             let data = try storage.vault.read(id: id)
             let document = try AuthDocument.read(data)
-            guard document.accountID == profile.accountID else { throw AccountFailure("保存的账号凭据与账号记录不一致。") }
+            guard document.accountID == profile.accountID else { throw AccountFailure("Saved credentials do not match the account record.") }
             let snapshot = try await session { client in
                 try await client.useExternalTokens(document, plan: profile.plan)
                 return try await client.readLimits()
             }
             registry.profiles[index].usage = snapshot
             registry.profiles[index].lastError = nil
+            registry.profiles[index].localizedError = nil
             if let plan = snapshot.response.mainBucket?.planType { registry.profiles[index].plan = plan }
             try storage.save(registry)
         } catch {
             registry.profiles[index].lastError = error.localizedDescription
+            registry.profiles[index].localizedError = error as? AccountFailure
             try storage.save(registry)
             throw error
         }
     }
 
     public func updateCredential(_ id: UUID) async throws {
-        guard id != activeID else { throw AccountFailure("当前账号由 Codex 自动更新登录。请刷新账号信息。") }
-        guard let profile = registry.profiles.first(where: { $0.id == id }) else { throw AccountFailure("未找到该账号。") }
+        guard id != activeID else { throw AccountFailure("Codex manages the current account's sign-in. Refresh the account details.") }
+        guard let profile = registry.profiles.first(where: { $0.id == id }) else { throw AccountFailure("Account not found.") }
         let original = try storage.vault.read(id: id)
         let updated: Data = try await session(auth: original) { client in
             _ = try await client.request("account/read", params: ["refreshToken": true])
@@ -80,7 +82,7 @@ public final class AccountService {
             let data = try Data(contentsOf: client.home.appendingPathComponent("auth.json"))
             let document = try AuthDocument.read(data)
             guard document.accountID == profile.accountID, info.email == profile.email else {
-                throw AccountFailure("更新后的账号身份与保存的记录不一致。")
+                throw AccountFailure("The renewed account identity does not match the saved record.")
             }
             try self.storage.vault.save(data, id: id)
             return data
@@ -90,7 +92,7 @@ public final class AccountService {
     }
 
     public func beginLogin(openURL: (URL) -> Void) async throws -> UUID {
-        guard loginClient == nil else { throw AccountFailure("另一个账号正在登录。") }
+        guard loginClient == nil else { throw AccountFailure("Another account is signing in.") }
         let home = try storage.makeSession()
         let client = try CodexClient(installation: installation, home: home)
         loginClient = client
@@ -100,7 +102,7 @@ public final class AccountService {
             loginID = start.loginId
             guard let url = URL(string: start.authUrl), url.scheme == "https",
                   let host = url.host, ["auth.openai.com", "auth0.openai.com", "chatgpt.com"].contains(host) else {
-                throw AccountFailure("Codex 返回了无法识别的登录地址。")
+                throw AccountFailure("Codex returned an unrecognized sign-in address.")
             }
             openURL(url)
             try await client.waitForLogin(id: start.loginId)
@@ -129,15 +131,15 @@ public final class AccountService {
 
     public func rename(_ id: UUID, label: String) throws {
         let clean = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, clean.count <= 60 else { throw AccountFailure("账号名称需要包含 1 至 60 个字符。") }
-        guard let index = registry.profiles.firstIndex(where: { $0.id == id }) else { throw AccountFailure("未找到该账号。") }
+        guard !clean.isEmpty, clean.count <= 60 else { throw AccountFailure("Account names must contain 1 to 60 characters.") }
+        guard let index = registry.profiles.firstIndex(where: { $0.id == id }) else { throw AccountFailure("Account not found.") }
         registry.profiles[index].label = clean
         try storage.save(registry)
     }
 
     public func remove(_ id: UUID) throws {
-        guard id != activeID else { throw AccountFailure("请切换到其他账号后再移除当前账号。") }
-        guard registry.profiles.contains(where: { $0.id == id }) else { throw AccountFailure("未找到该账号。") }
+        guard id != activeID else { throw AccountFailure("Switch to another account before removing the current account.") }
+        guard registry.profiles.contains(where: { $0.id == id }) else { throw AccountFailure("Account not found.") }
         try storage.vault.remove(id: id)
         registry.profiles.removeAll { $0.id == id }
         try storage.save(registry)
@@ -145,7 +147,7 @@ public final class AccountService {
 
     public func updatePreferences(_ preferences: Preferences) throws {
         guard [0, 60, 120, 300, 900].contains(preferences.refreshSeconds) else {
-            throw AccountFailure("请选择支持的刷新间隔。")
+            throw AccountFailure("Choose a supported refresh interval.")
         }
         registry.preferences = preferences
         try storage.save(registry)
@@ -154,24 +156,24 @@ public final class AccountService {
     public func switchAccount(_ id: UUID) async throws {
         _ = try await synchronizeCurrent()
         guard id != activeID else { return }
-        guard let target = registry.profiles.first(where: { $0.id == id }) else { throw AccountFailure("未找到该账号。") }
+        guard let target = registry.profiles.first(where: { $0.id == id }) else { throw AccountFailure("Account not found.") }
         let targetData = try storage.vault.read(id: id)
         let targetInfo = try await identify(targetData)
         let targetDocument = try AuthDocument.read(targetData)
         guard targetDocument.accountID == target.accountID, targetInfo.email == target.email else {
-            throw AccountFailure("账号凭据与账号记录不一致，请重新登录。")
+            throw AccountFailure("Credentials do not match the account record. Sign in again.")
         }
         try await refresh(id)
         let applications = NSRunningApplication.runningApplications(withBundleIdentifier: installation.bundleID)
         for application in applications {
-            guard application.terminate() else { throw AccountFailure("Codex 暂时无法退出，请完成当前任务后重试。") }
+            guard application.terminate() else { throw AccountFailure("Codex cannot quit right now. Finish the current task and try again.") }
         }
         let deadline = Date().addingTimeInterval(15)
         while applications.contains(where: { !$0.isTerminated }) && Date() < deadline {
             try await Task.sleep(for: .milliseconds(100))
         }
         guard applications.allSatisfy(\.isTerminated) else {
-            throw AccountFailure("Codex 仍在运行。请正常退出 Codex 后重试。")
+            throw AccountFailure("Codex is still running. Quit Codex normally and try again.")
         }
         _ = try await synchronizeCurrent()
         let outgoing = try storage.readLive()
@@ -180,12 +182,12 @@ public final class AccountService {
         configuration.activates = true
         let application = try await NSWorkspace.shared.openApplication(at: installation.application, configuration: configuration)
         guard application.bundleIdentifier == installation.bundleID, !application.isTerminated else {
-            throw AccountFailure("账号已经写入，但 Codex 未成功启动。请打开 Codex 应用。")
+            throw AccountFailure("The account was saved, but Codex did not start. Open the Codex app.")
         }
-        guard let current = try storage.readLive() else { throw AccountFailure("切换后的账号文件不存在。") }
+        guard let current = try storage.readLive() else { throw AccountFailure("The account file is missing after switching.") }
         let verifiedInfo = try await identify(current)
         guard try AuthDocument.read(current).accountID == target.accountID, verifiedInfo.email == target.email else {
-            throw AccountFailure("Codex 启动后的账号核验失败，请重新登录目标账号。")
+            throw AccountFailure("Account verification failed after Codex started. Sign in to the target account again.")
         }
         activeID = id
     }
@@ -197,11 +199,12 @@ public final class AccountService {
             try storage.vault.save(data, id: id)
             registry.profiles[index].plan = info.planType
             registry.profiles[index].lastError = nil
+            registry.profiles[index].localizedError = nil
             try storage.save(registry)
             return id
         }
         let cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        let profile = Profile(label: cleanLabel.isEmpty ? (info.email ?? "ChatGPT 账号") : cleanLabel,
+        let profile = Profile(label: cleanLabel.isEmpty ? (info.email ?? "ChatGPT") : cleanLabel,
                               accountID: document.accountID, info: info)
         try storage.vault.save(data, id: profile.id)
         registry.profiles.append(profile)

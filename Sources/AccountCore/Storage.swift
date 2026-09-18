@@ -14,14 +14,14 @@ public enum PrivateFiles {
         let stage = destination.deletingLastPathComponent().appendingPathComponent(".write-" + UUID().uuidString)
         guard FileManager.default.createFile(atPath: stage.path, contents: nil,
                                              attributes: [.posixPermissions: 0o600]) else {
-            throw AccountFailure("无法创建私有文件。")
+            throw AccountFailure("Unable to create a private file.")
         }
         let handle = try FileHandle(forWritingTo: stage)
         try handle.write(contentsOf: data)
         try handle.synchronize()
         try handle.close()
         guard rename(stage.path, destination.path) == 0 else {
-            throw AccountFailure("无法保存文件：\(destination.lastPathComponent)，系统错误 \(errno)。")
+            throw AccountFailure("Unable to save %@ (system error %@).", destination.lastPathComponent, String(errno))
         }
     }
 
@@ -64,7 +64,7 @@ public final class CredentialVault {
         guard status == errSecSuccess || status == errSecItemNotFound else { throw failure(status) }
     }
     private func failure(_ status: OSStatus) -> AccountFailure {
-        AccountFailure("钥匙串操作失败（\(status)）。请确认 macOS 钥匙串已经解锁并允许访问。")
+        AccountFailure("Keychain operation failed (%@). Unlock the macOS Keychain and allow access.", String(status))
     }
 }
 
@@ -86,7 +86,7 @@ public final class AccountStorage {
         let lock = root.appendingPathComponent("application.lock")
         lockDescriptor = open(lock.path, O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
         guard lockDescriptor >= 0, flock(lockDescriptor, LOCK_EX | LOCK_NB) == 0 else {
-            throw AccountFailure("账号管理应用已经在运行。请从菜单栏打开现有窗口。")
+            throw AccountFailure("The account manager is already running. Open its window from the menu bar.")
         }
         try PrivateFiles.createDirectory(runtime)
     }
@@ -101,7 +101,7 @@ public final class AccountStorage {
         guard registry.version == 1,
               Set(registry.profiles.map(\.id)).count == registry.profiles.count,
               Set(registry.profiles.map(\.identity)).count == registry.profiles.count else {
-            throw AccountFailure("账号记录的格式无法识别，请检查 accounts.json。")
+            throw AccountFailure("Unrecognized account records. Check accounts.json.")
         }
         return registry
     }
@@ -122,7 +122,7 @@ public final class AccountStorage {
         guard FileManager.default.fileExists(atPath: liveAuth.path) else { return nil }
         let values = try liveAuth.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
         guard values.isSymbolicLink != true, values.isRegularFile == true else {
-            throw AccountFailure("Codex 凭据路径需要是普通文件。")
+            throw AccountFailure("The Codex credentials path must be a regular file.")
         }
         let data = try Data(contentsOf: liveAuth)
         _ = try AuthDocument.read(data)
@@ -132,12 +132,12 @@ public final class AccountStorage {
     public func install(_ data: Data, replacing expected: Data?) throws {
         _ = try AuthDocument.read(data)
         guard try readLive() == expected else {
-            throw AccountFailure("Codex 当前账号在切换期间发生变化，请刷新账号列表后重新切换。")
+            throw AccountFailure("The current Codex account changed during switching. Refresh the account list and try again.")
         }
         try PrivateFiles.createDirectory(liveAuth.deletingLastPathComponent())
         try PrivateFiles.write(data, to: liveAuth)
         guard try Data(contentsOf: liveAuth) == data else {
-            throw AccountFailure("账号文件写入后的核验失败。")
+            throw AccountFailure("Account file verification failed after saving.")
         }
     }
 }

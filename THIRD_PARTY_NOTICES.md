@@ -1,4 +1,11 @@
-# 参考与依赖
+# Third-party notices / 第三方声明
+
+The app uses Swift, SwiftUI, AppKit, Foundation, Security, and ServiceManagement.
+Sign-in and quota queries use the app-server interface of the user's installed Codex CLI.
+Codex CLI is governed by its own license and is not included in this app bundle.
+
+Feature research referenced the public documentation and source of
+4LAU/codex-profile-switcher at commit `4f2f313b5156be84341f21ce43a73b501ff5dc3a`.
 
 应用使用 Swift、SwiftUI、AppKit、Foundation、Security 和 ServiceManagement。
 账号登录与额度查询通过用户本机安装的 Codex CLI 提供的 app-server 接口完成。
@@ -7,8 +14,9 @@ Codex CLI 由其各自的许可协议约束，本应用安装包不包含 Codex 
 功能研究参考了 4LAU/codex-profile-switcher 的公开说明与源码，参考提交为
 `4f2f313b5156be84341f21ce43a73b501ff5dc3a`。
 
-参考项目地址：https://github.com/4LAU/codex-profile-switcher
+Reference / 参考项目：[4LAU/codex-profile-switcher](https://github.com/4LAU/codex-profile-switcher)
 
+The reference project uses the MIT License, reproduced below.
 参考项目采用 MIT License，许可内容如下：
 
 MIT License

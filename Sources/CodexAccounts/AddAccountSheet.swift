@@ -6,28 +6,28 @@ struct AddAccountSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("添加账号").font(.system(size: 23, weight: .semibold))
+                Text(model.strings("Add account")).font(.system(size: 23, weight: .semibold))
                 Spacer()
                 Button { dismiss() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                    .buttonStyle(.plain).keyboardShortcut(.cancelAction).accessibilityLabel("关闭")
+                    .buttonStyle(.plain).keyboardShortcut(.cancelAction).accessibilityLabel(model.strings("Close"))
             }
-            Text("选择一种方式添加你的 ChatGPT 账号。")
+            Text(model.strings("Choose how to add your ChatGPT account."))
                 .font(.system(size: 13)).foregroundStyle(.secondary)
-            action("登录新的 ChatGPT 账号", detail: "打开浏览器，登录后自动保存账号。", symbol: "person.crop.circle.badge.plus") {
+            action(model.strings("Sign in to a new ChatGPT account"), detail: model.strings("Open your browser and save the account after sign-in."), symbol: "person.crop.circle.badge.plus") {
                 dismiss()
                 Task { await model.login() }
             }
-            action("导入当前 Codex 账号", detail: "保存这台 Mac 上已经登录的账号。", symbol: "arrow.down.circle") {
+            action(model.strings("Import current Codex account"), detail: model.strings("Save the account already signed in on this Mac."), symbol: "arrow.down.circle") {
                 dismiss()
                 Task { await model.importCurrent() }
             }
-            action("从 auth.json 文件导入", detail: "选择一个或多个已有的 Codex 账号文件。", symbol: "doc.badge.plus") {
+            action(model.strings("Import from auth.json"), detail: model.strings("Choose one or more existing Codex account files."), symbol: "doc.badge.plus") {
                 dismiss()
                 Task { await model.importFile() }
             }
-            Label("账号登录凭据保存在本机钥匙串", systemImage: "lock.shield")
+            Label(model.strings("Credentials are stored in your Mac's Keychain"), systemImage: "lock.shield")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
-        }.padding(28).frame(width: 440).tint(Palette.accent)
+        }.padding(28).frame(width: 480).tint(Palette.accent)
     }
     private func action(_ title: String, detail: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {

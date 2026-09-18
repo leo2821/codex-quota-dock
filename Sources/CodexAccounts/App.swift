@@ -1,3 +1,4 @@
+import AccountCore
 import AppKit
 import Combine
 import SwiftUI
@@ -16,13 +17,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.autosaveName = "CodexAccountsStatus"
         item.isVisible = true
         if let button = item.button {
-            let image = NSImage(systemSymbolName: "person.2.circle", accessibilityDescription: "QuotaDock 账号管理")!
+            let image = NSImage(systemSymbolName: "person.2.circle", accessibilityDescription: "Codex Quota Dock")!
             image.size = NSSize(width: 17, height: 17)
             image.isTemplate = true
             button.image = image
             button.imagePosition = .imageLeading
-            button.title = " QuotaDock"
-            button.toolTip = "查看账号额度与快速切换"
+            button.title = " Codex Quota Dock"
+            button.toolTip = model.strings("View account quotas and switch accounts")
             button.target = self
             button.action = #selector(toggleMenu)
         }
@@ -35,7 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observer = model.objectWillChange.sink { [weak self, weak model] _ in
             DispatchQueue.main.async {
                 guard let self, let model else { return }
-                self.statusItem?.button?.title = model.menuTitle.isEmpty ? " QuotaDock" : " QuotaDock \(model.menuTitle)"
+                self.statusItem?.button?.title = model.menuTitle.isEmpty ? " Codex Quota Dock" : " Codex Quota Dock \(model.menuTitle)"
+                self.statusItem?.button?.toolTip = model.strings("View account quotas and switch accounts")
             }
         }
     }
@@ -58,7 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "statusWindowFrame": statusItem?.button?.window.map { NSStringFromRect($0.frame) } ?? "",
             "accountCount": model.profiles.count,
             "accountsWithUsage": model.profiles.filter { $0.usage != nil && $0.lastError == nil }.count,
-            "mainWindows": NSApp.windows.filter { $0.title == "QuotaDock" }.map {
+            "language": model.preferences.language.rawValue,
+            "mainWindows": NSApp.windows.filter { $0.title == "Codex Quota Dock" }.map {
                 ["width": $0.frame.width, "height": $0.frame.height, "visible": $0.isVisible] as [String: Any]
             }
         ]
@@ -78,7 +81,8 @@ struct AppRoot: View {
     let delegate: AppDelegate
     @Environment(\.openWindow) private var openWindow
     var body: some View {
-        MainView(model: model).frame(minWidth: 920, minHeight: 620)
+        MainView(model: model).frame(minWidth: 1100, minHeight: 680)
+            .environment(\.locale, model.strings.locale)
             .onAppear {
                 delegate.configure(model: model) {
                     openWindow(id: "main")
@@ -98,16 +102,16 @@ struct CodexAccountsApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel()
     var body: some Scene {
-        Window("QuotaDock", id: "main") {
+        Window("Codex Quota Dock", id: "main") {
             AppRoot(model: model, delegate: delegate)
         }
-        .defaultSize(width: 1080, height: 760)
+        .defaultSize(width: 1180, height: 800)
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(after: .newItem) {
-                Button("添加账号") { Task { await model.login() } }
+                Button(model.strings("Add account")) { Task { await model.login() } }
                     .keyboardShortcut("n").disabled(model.busy)
-                Button("刷新全部账号") { Task { await model.refreshAll() } }
+                Button(model.strings("Refresh all accounts")) { Task { await model.refreshAll() } }
                     .keyboardShortcut("r").disabled(model.busy)
             }
         }

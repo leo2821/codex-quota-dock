@@ -1,98 +1,109 @@
-# QuotaDock
+# Codex Quota Dock
 
-macOS 原生账号管理应用，用于查看多个 ChatGPT 账号的 Codex 剩余额度、重置时间，并切换 Codex 当前使用的账号。
+English · [简体中文](README.zh-CN.md)
 
-本项目为独立第三方工具，与 OpenAI 无隶属关系，也未经 OpenAI 官方认可。OpenAI、ChatGPT 和 Codex 的名称及商标归各自权利人所有。
+A native macOS app for viewing the remaining Codex quota and reset times of multiple ChatGPT accounts, with account switching from the main window and menu bar.
 
-## 运行
+This is an independent third-party project. It is not affiliated with or endorsed by OpenAI. OpenAI, ChatGPT, and Codex names and trademarks belong to their respective owners.
 
-双击 `QuotaDock.app`。可以将应用复制到 Applications 目录。
+## Run
 
-环境要求：macOS 14 或更新版本，已经安装包含 Codex 的 ChatGPT 桌面应用。当前提供的应用包支持 Apple Silicon，使用 ad-hoc 签名，尚未经过 Apple 公证。其他 Mac 可能需要在系统设置的“隐私与安全性”中允许打开；也可以在自己的 Mac 上从源码构建。
+Open `Codex Quota Dock.app`. You can copy it to your Applications folder.
 
-应用启动后会保存本机 Codex 已登录的 ChatGPT 账号，并查询该账号的额度。顶部菜单栏显示 `QuotaDock` 和当前账号的剩余额度，点击后可查看所有已保存账号。
+Requires macOS 14 or later and an installed ChatGPT desktop app that includes Codex. The downloadable build supports Apple Silicon, uses an ad-hoc signature, and is not notarized by Apple. On another Mac, you may need to allow the app in **System Settings → Privacy & Security**, or build it from source on your own Mac.
 
-使用 iBar 等菜单栏管理工具时，请在该工具中展开或显示本应用的菜单栏项目。
+On launch, the app saves the ChatGPT account currently signed in to your local Codex installation and reads its quota. The menu bar shows `Codex Quota Dock` and the current account's remaining quota. Click it to view saved accounts.
 
-## 使用范围
+If you use iBar or another menu bar manager, expand or show this app's menu bar item in that tool.
 
-用于管理本人有权使用的账号。使用者需要遵守适用的 [OpenAI 使用条款](https://openai.com/policies/terms-of-use/)，包括账号凭据保密和服务额度限制。请勿共享账号凭据、出售账号访问权，或通过多账号规避额度限制。开源许可仅适用于本项目代码，服务使用仍受相应条款约束。
+## Language
 
-## 添加账号
+One app includes both English and Simplified Chinese. Select **Settings → Language → App language → Follow system / 简体中文 / English**. In Chinese, use **应用设置 → 语言 → 应用语言**.
 
-点击主窗口右上角的 **添加账号**，选择一种方式：
+The first launch follows the system language, with English used for unsupported languages. Changing the language immediately updates the main window, add-account sheet, menu bar, quota windows, countdowns, and app messages. Your choice is saved and persists across launches. Account names and email addresses retain their original contents.
 
-1. **登录新的 ChatGPT 账号**：在打开的浏览器页面中登录所需账号，成功后自动保存。添加其他账号时，请在登录页面选择对应账号。
-2. **导入当前 Codex 账号**：保存本机 Codex 当前已经登录的账号。
-3. **从 auth.json 文件导入**：选择一个或多个已有的 Codex 账号文件。
+## Intended use
 
-同一个 ChatGPT 用户和工作区重复导入时，会更新已有记录。可以通过账号卡片右上角菜单修改名称、刷新额度、更新登录凭据或移除账号。
+Use accounts you are authorized to access and comply with the applicable [OpenAI Terms of Use](https://openai.com/policies/terms-of-use/), including credential confidentiality and service limits. Do not share account credentials, sell account access, or use multiple accounts to evade usage limits. The open-source license covers this project's code; service usage remains subject to the applicable terms.
 
-## 额度与重置
+## Add accounts
 
-- 百分比表示剩余额度，由接口返回的已用百分比计算。
-- 周期长度使用接口实际返回值，支持小时周期、每周周期及其他周期长度。
-- 同时显示倒计时和本机时区下的准确重置时间。
-- 接口返回多个额度类别时，分别显示各类别。
-- 接口提供额度余额或可用重置次数时，一并显示。
-- 缺少的额度显示为未知；到达重置时间后显示等待刷新确认。
-- 查询失败时显示错误。此前查询结果带有时间标记，排序和账号建议会排除过期或查询失败的记录。
+Click **Add account** at the top right of the main window and choose a method:
 
-默认每 5 分钟刷新，可以在应用设置中选择手动、每分钟、每 2 分钟、每 5 分钟或每 15 分钟。
+1. **Sign in to a new ChatGPT account**: sign in through the browser. The app saves the account when sign-in completes. Select the intended account on the sign-in page when adding another account.
+2. **Import current Codex account**: save the account already signed in on this Mac.
+3. **Import from auth.json**: select one or more existing Codex account files.
 
-## 切换账号
+Importing the same ChatGPT user and workspace again updates the existing record. Each account card's menu lets you rename the account, refresh its quota, renew its credentials, sign in again, or remove it.
 
-在主窗口点击 **切换并重启**，或者点击菜单栏账号旁的 **切换**。
+## Quotas and resets
 
-应用会查询目标账号额度，保存当前账号的最新凭据，正常退出 Codex，写入目标账号凭据，重新打开 Codex，并核验账号文件中的身份。切换会重新启动 Codex，请在正在执行的任务完成后操作。应用设置中可以关闭切换确认提示。
+- Percentages show the remaining quota, calculated from the used percentage returned by the account API.
+- Window lengths come from the API and can include hourly, weekly, or other durations.
+- Each window shows a countdown and its exact reset time in your Mac's time zone.
+- Multiple limit categories appear separately when returned by the API.
+- Credit balances and available reset credits appear when provided.
+- Missing values display as unknown. After a reset time passes, the app waits for a fresh query to confirm the quota.
+- Query failures show an error. Previous results retain their timestamps. Expired or failed results are excluded from quota-based ranking and account suggestions.
 
-应用针对使用 `auth.json` 保存登录状态的 Codex 配置。独立运行的 Codex CLI 会话可能继续使用其已经读取的登录信息，需要重新启动相关 CLI 会话。
+Automatic refresh defaults to every five minutes. Settings supports manual refresh or intervals of one, two, five, or fifteen minutes.
 
-## 登录状态
+## Switch accounts
 
-当前账号的登录更新由 Codex 管理。其他账号无法查询额度时，可以使用账号菜单中的 **更新登录凭据**。服务要求重新登录时，通过 **重新登录账号** 完成浏览器登录。
+Click **Switch & restart** in the main window or **Switch** beside an account in the menu bar.
 
-每个账号的凭据保存在 macOS 钥匙串，账号名称、设置和最近查询结果保存在：
+The app checks the target account's quota, saves the current account's latest credentials, quits Codex normally, writes the target credentials, reopens Codex, and verifies the identity in the account file. Switching restarts Codex, so wait for running tasks to finish. You can disable the confirmation prompt in Settings.
+
+The app is designed for Codex configurations that store authentication in `auth.json`. Separately running Codex CLI sessions may keep the credentials they already loaded; restart those sessions as needed.
+
+## Sign-in and storage
+
+Codex manages sign-in renewal for the current account. If another account cannot retrieve its quota, use **Renew credentials** in its menu. When a new sign-in is required, choose **Sign in again** and complete browser authentication.
+
+Credentials are stored in macOS Keychain. Account names, preferences, and recent quota results are stored at:
 
 `~/Library/Application Support/CodexAccounts/accounts.json`
 
-账号接口在该目录下独立的 `runtime` 目录中运行。需要文件形式凭据的登录和账号识别操作使用权限为 `0700` 的目录与 `0600` 的文件，操作结束后清理。额度查询采用独立的外部令牌会话。
+The account API runs in separate sessions inside that directory's `runtime` folder. Operations that need file-based credentials use directories with `0700` permissions and files with `0600` permissions, then clean up after completion. Quota queries use separate external-token sessions.
 
-## 源码构建
+## Build from source
 
-安装 Xcode Command Line Tools 后，在本项目目录运行：
+Install Xcode Command Line Tools, then run from the project directory:
 
 ```bash
 bash Scripts/package.sh
 ```
 
-构建结果为 `dist/QuotaDock.app`。编译文件和图标中间文件保存在已经被 Git 忽略的 `work` 目录。
+The result is `dist/Codex Quota Dock.app`, including both language resources. Build and icon intermediates are stored in the Git-ignored `work` directory.
 
-代码分为三个 Swift Package target：
+The Swift package has three targets:
 
-- `AccountCore`：账号、额度、钥匙串、文件保存与 Codex 通信。
-- `CodexAccounts`：主窗口、添加账号界面、菜单栏与设置。
-- `AccountCheck`：使用真实 Codex 程序和现有账号的集成验证。
+- `AccountCore`: accounts, quotas, Keychain, storage, localization, and Codex communication.
+- `CodexAccounts`: the main window, add-account sheet, menu bar, and settings.
+- `AccountCheck`: integration checks using the installed Codex executable and an existing account.
 
-## 集成验证
+## Integration checks
 
 ```bash
 swift build --scratch-path work/build
 work/build/debug/account-check "$PWD/work/validation" "$HOME/.codex/auth.json"
+python3 Scripts/check-localization.py "$PWD"
 ```
 
-验证程序查询真实额度，启动并取消独立的登录流程，在专属钥匙串项目和独立目录中检查保存、去重、替换及清理。原有 Codex 凭据在结束时逐字节核验。
+The checker queries real quotas, starts and cancels a separate sign-in flow, and verifies storage, deduplication, replacement, and cleanup with dedicated Keychain items and isolated directories. It confirms that the original Codex credentials remain byte-for-byte unchanged.
 
-当前发布包已经在 macOS 26.6.2、Apple Silicon、Codex CLI `0.155.0-alpha.2.6` 上完成编译、启动和 27 项单账号集成检查。主窗口中的三个真实账号均已成功刷新额度，添加账号面板的三种入口已完成界面检查。两个不同真实账号之间的完整桌面切换尚未完成验证，当前版本以预发布形式提供。
+Checks also cover both language resources, translated quota windows and real sign-in errors, and persisted language preferences.
 
-开发时可设置 `CODEX_ACCOUNTS_DATA_DIR` 指定应用数据目录，设置 `CODEX_ACCOUNTS_TARGET_DIR` 指定账号切换的目标 Codex 目录。正式使用时保持默认即可。
+Version 1.1.0 was built and launched on macOS 26.6.2 with Apple Silicon and Codex CLI `0.155.0-alpha.2.6`, passing 34 integration checks. Three real accounts refreshed successfully. The English account page, add-account options, switching confirmation, and both language settings were checked through macOS accessibility. Restarting the app retained the selected English interface. All 160 translation entries passed resource and format-argument checks. A full desktop switch between two different real accounts has not yet been validated, so builds are provided as prereleases.
 
-## 许可
+For development, `CODEX_ACCOUNTS_DATA_DIR` selects a separate app data directory, and `CODEX_ACCOUNTS_TARGET_DIR` selects the target Codex directory for account switching. Keep the defaults for normal use.
 
-本项目采用 [MIT License](LICENSE)。参考项目的版权与许可声明保存在 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+## License
 
-## 参考
+[MIT License](LICENSE). Attribution and license details for the reference project are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## References
 
 - [4LAU/codex-profile-switcher](https://github.com/4LAU/codex-profile-switcher)
-- [Codex app-server 官方说明](https://developers.openai.com/codex/app-server)
-- [Codex 登录与凭据保存说明](https://developers.openai.com/codex/auth)
+- [Official Codex app-server documentation](https://developers.openai.com/codex/app-server)
+- [Codex authentication and credential storage](https://developers.openai.com/codex/auth)
