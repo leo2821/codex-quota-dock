@@ -8,7 +8,7 @@ struct MenuPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Codex Accounts", systemImage: "person.2.circle").font(.system(size: 15, weight: .semibold))
+                Label("QuotaDock", systemImage: "person.2.circle").font(.system(size: 15, weight: .semibold))
                 Spacer()
                 Button { Task { await model.refreshAll() } } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.plain).disabled(model.busy).help("刷新全部账号")

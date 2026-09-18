@@ -55,8 +55,8 @@ struct MainView: View {
                 Image(systemName: "person.crop.square.filled.and.at.rectangle")
                     .font(.system(size: 28, weight: .medium)).foregroundStyle(Color.white)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Codex").font(.system(size: 20, weight: .semibold))
-                    Text("Accounts").font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
+                    Text("QuotaDock").font(.system(size: 20, weight: .semibold))
+                    Text("账号与额度").font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
                 }
             }.padding(.top, 48).padding(.bottom, 38)
             navButton("账号与额度", symbol: "square.grid.2x2", section: "accounts")

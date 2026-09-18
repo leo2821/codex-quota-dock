@@ -1,4 +1,4 @@
-# Codex Accounts
+# QuotaDock
 
 macOS 原生账号管理应用，用于查看多个 ChatGPT 账号的 Codex 剩余额度、重置时间，并切换 Codex 当前使用的账号。
 
@@ -6,11 +6,11 @@ macOS 原生账号管理应用，用于查看多个 ChatGPT 账号的 Codex 剩�
 
 ## 运行
 
-双击 `Codex Accounts.app`。可以将应用复制到 Applications 目录。
+双击 `QuotaDock.app`。可以将应用复制到 Applications 目录。
 
 环境要求：macOS 14 或更新版本，已经安装包含 Codex 的 ChatGPT 桌面应用。当前提供的应用包支持 Apple Silicon，使用 ad-hoc 签名，尚未经过 Apple 公证。其他 Mac 可能需要在系统设置的“隐私与安全性”中允许打开；也可以在自己的 Mac 上从源码构建。
 
-应用启动后会保存本机 Codex 已登录的 ChatGPT 账号，并查询该账号的额度。顶部菜单栏显示 `Codex` 和当前账号的剩余额度，点击后可查看所有已保存账号。
+应用启动后会保存本机 Codex 已登录的 ChatGPT 账号，并查询该账号的额度。顶部菜单栏显示 `QuotaDock` 和当前账号的剩余额度，点击后可查看所有已保存账号。
 
 使用 iBar 等菜单栏管理工具时，请在该工具中展开或显示本应用的菜单栏项目。
 
@@ -66,7 +66,7 @@ macOS 原生账号管理应用，用于查看多个 ChatGPT 账号的 Codex 剩�
 bash Scripts/package.sh
 ```
 
-构建结果为 `dist/Codex Accounts.app`。编译文件和图标中间文件保存在已经被 Git 忽略的 `work` 目录。
+构建结果为 `dist/QuotaDock.app`。编译文件和图标中间文件保存在已经被 Git 忽略的 `work` 目录。
 
 代码分为三个 Swift Package target：
 

@@ -16,12 +16,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.autosaveName = "CodexAccountsStatus"
         item.isVisible = true
         if let button = item.button {
-            let image = NSImage(systemSymbolName: "person.2.circle", accessibilityDescription: "Codex 账号管理")!
+            let image = NSImage(systemSymbolName: "person.2.circle", accessibilityDescription: "QuotaDock 账号管理")!
             image.size = NSSize(width: 17, height: 17)
             image.isTemplate = true
             button.image = image
             button.imagePosition = .imageLeading
-            button.title = " Codex"
+            button.title = " QuotaDock"
             button.toolTip = "查看账号额度与快速切换"
             button.target = self
             button.action = #selector(toggleMenu)
@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observer = model.objectWillChange.sink { [weak self, weak model] _ in
             DispatchQueue.main.async {
                 guard let self, let model else { return }
-                self.statusItem?.button?.title = model.menuTitle.isEmpty ? " Codex" : " Codex \(model.menuTitle)"
+                self.statusItem?.button?.title = model.menuTitle.isEmpty ? " QuotaDock" : " QuotaDock \(model.menuTitle)"
             }
         }
     }
@@ -58,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "statusWindowFrame": statusItem?.button?.window.map { NSStringFromRect($0.frame) } ?? "",
             "accountCount": model.profiles.count,
             "accountsWithUsage": model.profiles.filter { $0.usage != nil && $0.lastError == nil }.count,
-            "mainWindows": NSApp.windows.filter { $0.title == "Codex Accounts" }.map {
+            "mainWindows": NSApp.windows.filter { $0.title == "QuotaDock" }.map {
                 ["width": $0.frame.width, "height": $0.frame.height, "visible": $0.isVisible] as [String: Any]
             }
         ]
@@ -98,7 +98,7 @@ struct CodexAccountsApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel()
     var body: some Scene {
-        Window("Codex Accounts", id: "main") {
+        Window("QuotaDock", id: "main") {
             AppRoot(model: model, delegate: delegate)
         }
         .defaultSize(width: 1080, height: 760)

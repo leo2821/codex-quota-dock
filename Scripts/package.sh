@@ -14,7 +14,7 @@ export TMPDIR="$WORK_DIR/tmp"
 swift build --package-path "$PROJECT_DIR" --scratch-path "$BUILD_DIR" \
     --cache-path "$CACHE_DIR/swiftpm" --disable-sandbox -c release
 
-APP_DIR="$OUTPUT_DIR/Codex Accounts.app"
+APP_DIR="$OUTPUT_DIR/QuotaDock.app"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$BUILD_DIR/release/CodexAccounts" "$APP_DIR/Contents/MacOS/CodexAccounts"
 strip -S "$APP_DIR/Contents/MacOS/CodexAccounts"
