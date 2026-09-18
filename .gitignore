@@ -1,0 +1,11 @@
+.build/
+.swiftpm/
+.DS_Store
+work/
+dist/
+auth.json
+auth.json.*
+accounts.json
+.env
+.env.*
+*.log
