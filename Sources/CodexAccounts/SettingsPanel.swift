@@ -44,7 +44,7 @@ struct SettingsPanel: View {
                     LabeledContent(model.strings("Credentials"), value: model.strings("Local auth.json files"))
                     Button(model.strings("Show account files")) { model.openAccountFiles() }
                     LabeledContent(model.strings("Quota source"), value: model.strings("Official Codex account API"))
-                    LabeledContent(model.strings("Version"), value: "1.2.0")
+                    LabeledContent(model.strings("Version"), value: "1.2.1")
                     Text(model.strings("Each account has its own auth.json. Files contain unencrypted sign-in tokens and are accessible only to your macOS user."))
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                     Text(model.strings("Names, settings, and recent results are stored on this Mac. Failed queries keep the previous result with its timestamp."))

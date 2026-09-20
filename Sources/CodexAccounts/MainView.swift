@@ -101,6 +101,13 @@ struct MainView: View {
             }
             if model.isLoggingIn { loginBanner }
             if model.pendingCredentialMigrations > 0 { migrationBanner }
+            if let error = model.currentAccountError {
+                Label(model.strings("Current account needs attention: %@", error.description(using: model.strings)),
+                      systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 12)).foregroundStyle(Palette.warning)
+                    .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.white, in: RoundedRectangle(cornerRadius: 9))
+            }
             if model.profiles.isEmpty { emptyState }
             else {
                 HStack(spacing: 14) {
@@ -199,7 +206,11 @@ struct MainView: View {
     private var footer: some View {
         HStack(spacing: 8) {
             if model.busy { ProgressView().controlSize(.mini) }
-            else { Circle().fill(model.errorMessage == nil ? Palette.success : Palette.warning).frame(width: 6, height: 6) }
+            else {
+                Circle().fill(model.errorMessage == nil && model.currentAccountError == nil
+                              && model.profiles.allSatisfy { $0.lastError == nil } ? Palette.success : Palette.warning)
+                    .frame(width: 6, height: 6)
+            }
             Text(model.statusText).lineLimit(1)
             Spacer()
             Image(systemName: "lock.shield")

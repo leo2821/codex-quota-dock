@@ -36,9 +36,15 @@ public final class CodexClient {
     private var notifications: [LoginCompleted] = []
     private var loginWaiter: CheckedContinuation<LoginCompleted, Error>?
     private var stopped = false
+    private var secretValues: [String] = []
 
     public init(installation: CodexInstallation, home: URL) throws {
         self.home = home
+        let authFile = home.appendingPathComponent("auth.json")
+        if FileManager.default.fileExists(atPath: authFile.path) {
+            let document = try AuthDocument.read(Data(contentsOf: authFile))
+            rememberSecrets(document)
+        }
         process.executableURL = installation.executable
         process.arguments = ["-c", "cli_auth_credentials_store=\"file\"",
                              "-c", "analytics.enabled=false", "-c", "feedback.enabled=false", "app-server"]
@@ -68,7 +74,7 @@ public final class CodexClient {
 
     public func initialize() async throws {
         _ = try await request("initialize", params: [
-            "clientInfo": ["name": "codex_accounts", "title": "Codex Quota Dock", "version": "1.2.0"],
+            "clientInfo": ["name": "codex_accounts", "title": "Codex Quota Dock", "version": "1.2.1"],
             "capabilities": ["experimentalApi": true]
         ])
         try send(["method": "initialized", "params": [:]])
@@ -109,6 +115,7 @@ public final class CodexClient {
     }
 
     public func useExternalTokens(_ document: AuthDocument, plan: String?) async throws {
+        rememberSecrets(document)
         var params: [String: Any] = ["type": "chatgptAuthTokens",
                                      "accessToken": document.tokens!.access_token,
                                      "chatgptAccountId": document.accountID]
@@ -186,10 +193,31 @@ public final class CodexClient {
         if let error = message["error"] as? [String: Any] {
             let code = error["code"] as? Int ?? -1
             let method = methods[id] ?? "unknown"
-            complete(id, result: .failure(AccountFailure("Codex request failed (%@, %@). Check your network or sign in again.", method, String(code))))
+            let detail = error["message"] as? String ?? "The Codex response has no error description."
+            complete(id, result: .failure(requestFailure(method: method, code: code, detail: detail)))
         } else if let result = message["result"] {
             complete(id, result: .success(try JSONSerialization.data(withJSONObject: result)))
         } else { complete(id, result: .failure(AccountFailure("The Codex response has no result."))) }
+    }
+
+    private func rememberSecrets(_ document: AuthDocument) {
+        guard let tokens = document.tokens else { return }
+        secretValues.append(contentsOf: [tokens.access_token, tokens.refresh_token, tokens.id_token, tokens.account_id]
+            .compactMap { $0 }.filter { !$0.isEmpty })
+    }
+
+    private func requestFailure(method: String, code: Int, detail: String) -> AccountFailure {
+        if detail == "workspace routing discovery timed out" {
+            return AccountFailure("Codex's workspace lookup timed out. Try again later. (%@, %@)", method, String(code))
+        }
+        var safeDetail = detail
+        for secret in secretValues { safeDetail = safeDetail.replacingOccurrences(of: secret, with: "[redacted]") }
+        safeDetail = safeDetail.replacingOccurrences(of: #"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"#,
+                                                     with: "[redacted]", options: .regularExpression)
+        safeDetail = safeDetail.replacingOccurrences(of: #"(?i)Bearer\s+\S+"#, with: "Bearer [redacted]", options: .regularExpression)
+        safeDetail = safeDetail.replacingOccurrences(of: #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#,
+                                                     with: "[redacted]", options: .regularExpression)
+        return AccountFailure("Codex request failed (%@, %@): %@", method, String(code), String(safeDetail.prefix(1000)))
     }
 
     private func complete(_ id: Int, result: Result<Data, Error>) {

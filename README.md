@@ -45,6 +45,7 @@ Importing the same ChatGPT user and workspace again updates the existing record.
 - Credit balances and available reset credits appear when provided.
 - Missing values display as unknown. After a reset time passes, the app waits for a fresh query to confirm the quota.
 - Query failures show an error. Previous results retain their timestamps. Expired or failed results are excluded from quota-based ranking and account suggestions.
+- Account identity comes from the local sign-in file. Quota refresh queries each saved account independently; a failed current-account read is shown in the window while other account queries continue. Automatic refresh errors appear with the affected account.
 
 Automatic refresh defaults to every five minutes. Settings supports manual refresh or intervals of one, two, five, or fifteen minutes.
 
@@ -70,7 +71,7 @@ Account names, preferences, and recent quota results are stored at:
 
 `~/Library/Application Support/CodexAccounts/accounts.json`
 
-The account API runs in separate sessions inside that directory's `runtime` folder. The app copies the completed sign-in credentials into the account's permanent file before cleaning up the login session. Quota queries use separate external-token sessions.
+The account API runs in separate sessions inside that directory's `runtime` folder. The app copies the completed sign-in credentials into the account's permanent file before cleaning up the login session. Quota queries use separate external-token sessions. Auth0 JWTDecode reads local identity claims, and the official quota API authenticates the access token. If a credential renewal updates the file before a later request fails, the renewed credentials are preserved.
 
 Existing accounts saved in Keychain show a **Migrate saved accounts** button. Migration reads each saved account, verifies its identity, writes and verifies its local file, and records completion. macOS may ask for Keychain access during this operation. Completed accounts use local files on subsequent launches and refreshes. The original Keychain copies are retained. Signing in to an existing account again also creates its local file. The current Codex account is saved automatically from its existing `auth.json`.
 
@@ -84,7 +85,7 @@ Install Xcode Command Line Tools, then run from the project directory:
 bash Scripts/package.sh
 ```
 
-The result is `dist/Codex Quota Dock.app`, including both language resources. Build and icon intermediates are stored in the Git-ignored `work` directory.
+The result is `dist/Codex Quota Dock.app`, including both language resources. Build and icon intermediates are stored in the Git-ignored `work` directory. Swift Package Manager downloads the pinned JWTDecode dependency during the first build.
 
 The Swift package has three targets:
 
@@ -104,7 +105,14 @@ The checker queries real quotas, starts and cancels a separate sign-in flow, and
 
 Checks also cover both language resources, translated quota windows and real sign-in errors, and persisted language preferences.
 
-Version 1.2.0 passed 43 integration checks with a real account and the installed Codex app-server. All 176 English and Simplified Chinese resource entries passed format and completeness checks. Release compilation, code-signature verification, and `Info.plist` validation passed on Apple Silicon with macOS 26.6.2.
+Pass the app's `accounts.json` as a third argument to check all saved accounts. This uses copies of real credentials, verifies isolated refresh failures through filesystem permission changes in the test directory, and confirms that every original credential file remains unchanged:
+
+```bash
+work/build/debug/account-check "$PWD/work/validation" "$HOME/.codex/auth.json" \
+  "$HOME/Library/Application Support/CodexAccounts/accounts.json"
+```
+
+Version 1.2.1 passed 61 integration checks with three real accounts and the installed Codex app-server, including independent account refresh after file-access failures. All 185 English and Simplified Chinese resource entries passed format and completeness checks. Release compilation, code-signature verification, and `Info.plist` validation passed on Apple Silicon with macOS 26.6.2.
 
 A full desktop switch between two different real accounts and verification of all existing chats after that switch have not yet been completed, so builds are provided as prereleases.
 

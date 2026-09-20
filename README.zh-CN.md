@@ -45,6 +45,7 @@ macOS 原生账号管理应用，用于查看多个 ChatGPT 账号的 Codex 剩�
 - 接口提供额度余额或可用重置次数时，一并显示。
 - 缺少的额度显示为未知；到达重置时间后显示等待刷新确认。
 - 查询失败时显示错误。此前查询结果带有时间标记，排序和账号建议会排除过期或查询失败的记录。
+- 账号身份从本地登录文件读取。额度刷新分别查询每个保存账号；当前账号文件无法读取时，窗口显示具体原因，其他账号继续查询。自动刷新错误显示在对应账号卡片中。
 
 默认每 5 分钟刷新，可以在应用设置中选择手动、每分钟、每 2 分钟、每 5 分钟或每 15 分钟。
 
@@ -70,7 +71,7 @@ macOS 原生账号管理应用，用于查看多个 ChatGPT 账号的 Codex 剩�
 
 `~/Library/Application Support/CodexAccounts/accounts.json`
 
-账号接口在该目录下独立的 `runtime` 目录中运行。浏览器登录完成后，应用先保存并核验对应账号的凭据文件，然后清理登录期间的临时目录。额度查询采用独立的外部令牌会话。
+账号接口在该目录下独立的 `runtime` 目录中运行。浏览器登录完成后，应用先保存并核验对应账号的凭据文件，然后清理登录期间的临时目录。额度查询采用独立的外部令牌会话。Auth0 JWTDecode 读取本地身份信息，官方额度接口验证访问令牌。更新登录时，如果凭据文件已经更新，后续请求失败也会保留更新后的凭据。
 
 已有钥匙串账号会显示 **迁移已保存的账号** 按钮。迁移会逐个读取账号、核验身份、写入并核验本地文件，然后记录完成状态。macOS 可能在此期间请求钥匙串访问授权。已经完成的账号在重新启动和刷新额度时均使用本地文件，原有钥匙串副本保留。重新登录已有账号也会生成对应的本地文件。当前 Codex 账号会从现有 `auth.json` 自动保存。
 
@@ -84,7 +85,7 @@ macOS 原生账号管理应用，用于查看多个 ChatGPT 账号的 Codex 剩�
 bash Scripts/package.sh
 ```
 
-构建结果为 `dist/Codex Quota Dock.app`，包含完整的中英文语言资源。编译文件和图标中间文件保存在已经被 Git 忽略的 `work` 目录。
+构建结果为 `dist/Codex Quota Dock.app`，包含完整的中英文语言资源。编译文件和图标中间文件保存在已经被 Git 忽略的 `work` 目录。首次构建时，Swift Package Manager 会下载指定版本的 JWTDecode 依赖。
 
 代码分为三个 Swift Package target：
 
@@ -104,7 +105,14 @@ python3 Scripts/check-localization.py "$PWD"
 
 验证同时检查中英文资源、真实额度周期与登录错误的翻译，以及语言设置的持续保存。
 
-1.2.0 使用真实账号和本机 Codex app-server 通过 43 项集成检查。176 条中英文资源通过条目完整性和格式参数检查，Release 编译、应用签名及 `Info.plist` 在 Apple Silicon、macOS 26.6.2 上验证通过。
+增加第三个参数 `accounts.json` 可以验证全部保存账号。程序使用真实凭据的副本，在测试目录中改变文件权限，验证读取失败时其他账号继续刷新，并核验全部原始凭据保持一致：
+
+```bash
+work/build/debug/account-check "$PWD/work/validation" "$HOME/.codex/auth.json" \
+  "$HOME/Library/Application Support/CodexAccounts/accounts.json"
+```
+
+1.2.1 使用三个真实账号和本机 Codex app-server 通过 61 项集成检查，包括账号文件读取失败时其他账号独立刷新。185 条中英文资源通过条目完整性和格式参数检查，Release 编译、应用签名及 `Info.plist` 在 Apple Silicon、macOS 26.6.2 上验证通过。
 
 两个不同真实账号之间的完整桌面切换，以及切换后全部已有对话的保留情况，尚未完成验证，当前版本以预发布形式提供。
 

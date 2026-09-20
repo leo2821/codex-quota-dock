@@ -174,3 +174,12 @@
 "Codex request failed (%@, %@). Check your network or sign in again." = "Codex 请求失败（%@，%@）。请检查网络或重新登录该账号。";
 "The Codex response has no result." = "Codex 响应缺少结果。";
 "Codex is not signed in." = "当前 Codex 尚未登录。";
+"The account file has no ID token. Sign in again to save a complete auth.json." = "账号文件缺少 ID token，请重新登录以保存完整的 auth.json。";
+"The account file contains unreadable sign-in tokens. Sign in again to replace it." = "账号文件中的登录令牌无法读取，请重新登录以更新文件。";
+"The sign-in tokens in auth.json belong to different accounts. Sign in again." = "auth.json 中的登录令牌属于不同账号，请重新登录。";
+"The quota response belongs to a different account." = "额度查询返回的账号与所选账号不一致。";
+"Unable to read the current Codex account: %@" = "无法读取当前 Codex 账号：%@";
+"Saved account quotas refreshed. Check the current account message." = "已刷新保存账号的额度，请查看当前账号的提示。";
+"Current account needs attention: %@" = "当前账号需要检查：%@";
+"Codex's workspace lookup timed out. Try again later. (%@, %@)" = "Codex 查询工作空间服务地址超时，请稍后重试。（%@，%@）";
+"Codex request failed (%@, %@): %@" = "Codex 请求失败（%@，%@）：%@";

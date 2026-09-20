@@ -1,4 +1,5 @@
 import Foundation
+import JWTDecode
 
 public struct AccountFailure: LocalizedError, Codable, Equatable {
     public let message: String
@@ -34,6 +35,36 @@ public struct AuthDocument: Decodable {
     }
 
     public var accountID: String { tokens!.account_id! }
+
+    public func accountInfo() throws -> AccountInfo {
+        guard let tokens, let idToken = tokens.id_token, !idToken.isEmpty else {
+            throw AccountFailure("The account file has no ID token. Sign in again to save a complete auth.json.")
+        }
+        let identityToken: any JWT
+        let accessToken: any JWT
+        let identity: ChatGPTIdentityClaims
+        let access: ChatGPTIdentityClaims
+        do {
+            identityToken = try decode(jwt: idToken)
+            accessToken = try decode(jwt: tokens.access_token)
+            identity = try identityToken["https://api.openai.com/auth"].decode(ChatGPTIdentityClaims.self)
+            access = try accessToken["https://api.openai.com/auth"].decode(ChatGPTIdentityClaims.self)
+        } catch {
+            throw AccountFailure("The account file contains unreadable sign-in tokens. Sign in again to replace it.")
+        }
+        guard identity.chatgpt_account_id == accountID, access.chatgpt_account_id == accountID,
+              !identity.chatgpt_user_id.isEmpty, identity.chatgpt_user_id == access.chatgpt_user_id else {
+            throw AccountFailure("The sign-in tokens in auth.json belong to different accounts. Sign in again.")
+        }
+        return AccountInfo(type: "chatgpt", email: identityToken["email"].string,
+                           planType: identity.chatgpt_plan_type)
+    }
+}
+
+private struct ChatGPTIdentityClaims: Decodable {
+    let chatgpt_account_id: String
+    let chatgpt_user_id: String
+    let chatgpt_plan_type: String?
 }
 
 public struct AccountInfo: Codable, Equatable {
@@ -44,6 +75,11 @@ public struct AccountInfo: Codable, Equatable {
 
 public struct AccountReadResponse: Decodable {
     public let account: AccountInfo?
+}
+
+public struct AccountRefreshReport {
+    public let currentAccountError: AccountFailure?
+    public let failedAccountIDs: [UUID]
 }
 
 public struct QuotaWindow: Codable, Equatable, Identifiable {
@@ -100,6 +136,7 @@ public struct ResetCredits: Codable, Equatable {
 }
 
 public struct RateLimitsResponse: Codable, Equatable {
+    public let accountId: String?
     public let rateLimits: LimitBucket?
     public let rateLimitsByLimitId: [String: LimitBucket]?
     public let rateLimitResetCredits: ResetCredits?

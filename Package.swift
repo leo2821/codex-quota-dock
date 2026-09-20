@@ -9,8 +9,12 @@ let package = Package(
         .executable(name: "CodexAccounts", targets: ["CodexAccounts"]),
         .executable(name: "account-check", targets: ["AccountCheck"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/auth0/JWTDecode.swift.git", exact: "4.0.0")
+    ],
     targets: [
-        .target(name: "AccountCore", resources: [.process("Resources")]),
+        .target(name: "AccountCore", dependencies: [.product(name: "JWTDecode", package: "JWTDecode.swift")],
+                resources: [.process("Resources")]),
         .executableTarget(name: "CodexAccounts", dependencies: ["AccountCore"]),
         .executableTarget(name: "AccountCheck", dependencies: ["AccountCore"])
     ]

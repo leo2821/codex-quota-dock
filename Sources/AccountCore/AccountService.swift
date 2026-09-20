@@ -16,23 +16,28 @@ public final class AccountService {
         registry = try storage.load()
     }
 
-    public func identify(_ data: Data) async throws -> AccountInfo {
-        _ = try AuthDocument.read(data)
-        return try await session(auth: data) { client in try await client.readAccount() }
+    public func identify(_ data: Data) throws -> AccountInfo {
+        try AuthDocument.read(data).accountInfo()
     }
 
     @discardableResult
     public func importCredential(_ data: Data, label: String) async throws -> UUID {
         let document = try AuthDocument.read(data)
-        let info = try await identify(data)
-        return try saveCredential(data, document: document, info: info, label: label)
+        let info = try document.accountInfo()
+        let usage = try await queryLimits(document, plan: info.planType)
+        let id = try saveCredential(data, document: document, info: info, label: label)
+        let index = registry.profiles.firstIndex { $0.id == id }!
+        registry.profiles[index].usage = usage
+        try storage.save(registry)
+        return id
     }
 
     @discardableResult
-    public func synchronizeCurrent(importIfMissing: Bool = true) async throws -> UUID? {
+    public func synchronizeCurrent(importIfMissing: Bool = true) throws -> UUID? {
+        activeID = nil
         guard let data = try storage.readLive() else { activeID = nil; return nil }
         let document = try AuthDocument.read(data)
-        let info = try await identify(data)
+        let info = try document.accountInfo()
         let identity = document.accountID + "|" + (info.email?.lowercased() ?? "")
         if let index = registry.profiles.firstIndex(where: { $0.identity == identity }) {
             let id = registry.profiles[index].id
@@ -59,10 +64,11 @@ public final class AccountService {
             let data = try storage.vault.read(id: id)
             let document = try AuthDocument.read(data)
             guard document.accountID == profile.accountID else { throw AccountFailure("Saved credentials do not match the account record.") }
-            let snapshot = try await session { client in
-                try await client.useExternalTokens(document, plan: profile.plan)
-                return try await client.readLimits()
+            let info = try document.accountInfo()
+            guard info.email?.lowercased() == profile.email?.lowercased() else {
+                throw AccountFailure("Saved credentials do not match the account record.")
             }
+            let snapshot = try await queryLimits(document, plan: profile.plan)
             registry.profiles[index].usage = snapshot
             registry.profiles[index].lastError = nil
             registry.profiles[index].localizedError = nil
@@ -76,6 +82,25 @@ public final class AccountService {
         }
     }
 
+    public func synchronizeForRefresh() -> AccountFailure? {
+        do { _ = try synchronizeCurrent(); return nil }
+        catch {
+            return error as? AccountFailure
+                ?? AccountFailure("Unable to read the current Codex account: %@", error.localizedDescription)
+        }
+    }
+
+    public func refreshAll(progress: (UUID) -> Void = { _ in }) async -> AccountRefreshReport {
+        let currentAccountError = synchronizeForRefresh()
+        var failures: [UUID] = []
+        for profile in registry.profiles {
+            progress(profile.id)
+            do { try await refresh(profile.id) }
+            catch { failures.append(profile.id) }
+        }
+        return AccountRefreshReport(currentAccountError: currentAccountError, failedAccountIDs: failures)
+    }
+
     public func updateCredential(_ id: UUID) async throws {
         guard id != activeID else { throw AccountFailure("Codex manages the current account's sign-in. Refresh the account details.") }
         guard let profile = registry.profiles.first(where: { $0.id == id }) else { throw AccountFailure("Account not found.") }
@@ -84,14 +109,15 @@ public final class AccountService {
         }
         let original = try storage.vault.read(id: id)
         let updated: Data = try await session(auth: original) { client in
-            _ = try await client.request("account/read", params: ["refreshToken": true])
-            let info = try await client.readAccount()
-            let data = try Data(contentsOf: client.home.appendingPathComponent("auth.json"))
-            let document = try AuthDocument.read(data)
-            guard document.accountID == profile.accountID, info.email == profile.email else {
-                throw AccountFailure("The renewed account identity does not match the saved record.")
+            do {
+                _ = try await client.request("account/read", params: ["refreshToken": true])
+            } catch {
+                let data = try Data(contentsOf: client.home.appendingPathComponent("auth.json"))
+                if data != original { try self.saveRenewedCredential(data, profile: profile) }
+                throw error
             }
-            try self.storage.vault.save(data, id: id)
+            let data = try Data(contentsOf: client.home.appendingPathComponent("auth.json"))
+            try self.saveRenewedCredential(data, profile: profile)
             return data
         }
         _ = try AuthDocument.read(updated)
@@ -113,9 +139,9 @@ public final class AccountService {
             }
             try openURL(url)
             try await client.waitForLogin(id: start.loginId)
-            let info = try await client.readAccount()
             let data = try Data(contentsOf: home.appendingPathComponent("auth.json"))
             let document = try AuthDocument.read(data)
+            let info = try document.accountInfo()
             let id = try saveCredential(data, document: document, info: info, label: "")
             try await client.stop()
             try FileManager.default.removeItem(at: home)
@@ -144,7 +170,7 @@ public final class AccountService {
         guard profile.credentialStorage != .localFile else { return }
         let data = try await LegacyKeychain.read(id: id)
         let document = try AuthDocument.read(data)
-        let info = try await identify(data)
+        let info = try document.accountInfo()
         guard document.accountID == profile.accountID, info.email == profile.email else {
             throw AccountFailure("Saved credentials do not match the account record.")
         }
@@ -180,14 +206,14 @@ public final class AccountService {
     }
 
     public func switchAccount(_ id: UUID) async throws {
-        _ = try await synchronizeCurrent()
+        _ = try synchronizeCurrent()
         guard id != activeID else { return }
         guard let target = registry.profiles.first(where: { $0.id == id }) else { throw AccountFailure("Account not found.") }
         guard target.credentialStorage == .localFile else {
             throw AccountFailure("Migrate this saved account or sign in again to create its local auth.json.")
         }
         let targetData = try storage.vault.read(id: id)
-        let targetInfo = try await identify(targetData)
+        let targetInfo = try identify(targetData)
         let targetDocument = try AuthDocument.read(targetData)
         guard targetDocument.accountID == target.accountID, targetInfo.email == target.email else {
             throw AccountFailure("Credentials do not match the account record. Sign in again.")
@@ -204,7 +230,7 @@ public final class AccountService {
         guard applications.allSatisfy(\.isTerminated) else {
             throw AccountFailure("Codex is still running. Quit Codex normally and try again.")
         }
-        _ = try await synchronizeCurrent()
+        _ = try synchronizeCurrent()
         let outgoing = try storage.readLive()
         try storage.install(targetData, replacing: outgoing)
         let configuration = NSWorkspace.OpenConfiguration()
@@ -214,11 +240,32 @@ public final class AccountService {
             throw AccountFailure("The account was saved, but Codex did not start. Open the Codex app.")
         }
         guard let current = try storage.readLive() else { throw AccountFailure("The account file is missing after switching.") }
-        let verifiedInfo = try await identify(current)
+        let verifiedInfo = try identify(current)
         guard try AuthDocument.read(current).accountID == target.accountID, verifiedInfo.email == target.email else {
             throw AccountFailure("Account verification failed after Codex started. Sign in to the target account again.")
         }
         activeID = id
+    }
+
+    private func queryLimits(_ document: AuthDocument, plan: String?) async throws -> UsageSnapshot {
+        let snapshot = try await session { client in
+            try await client.useExternalTokens(document, plan: plan)
+            return try await client.readLimits()
+        }
+        if let accountID = snapshot.response.accountId, accountID != document.accountID {
+            throw AccountFailure("The quota response belongs to a different account.")
+        }
+        return snapshot
+    }
+
+    private func saveRenewedCredential(_ data: Data, profile: Profile) throws {
+        let document = try AuthDocument.read(data)
+        let info = try document.accountInfo()
+        guard document.accountID == profile.accountID,
+              info.email?.lowercased() == profile.email?.lowercased() else {
+            throw AccountFailure("The renewed account identity does not match the saved record.")
+        }
+        try storage.vault.save(data, id: profile.id)
     }
 
     private func saveCredential(_ data: Data, document: AuthDocument, info: AccountInfo, label: String) throws -> UUID {

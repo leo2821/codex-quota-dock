@@ -4,16 +4,18 @@ import Foundation
 
 @main
 struct AccountCheck {
+    static var checkCount = 0
     static func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
         guard try condition() else { throw AccountFailure("验证失败：" + message) }
+        checkCount += 1
         print("通过：" + message)
     }
 
     @MainActor
     static func main() async throws {
         setvbuf(stdout, nil, _IONBF, 0)
-        guard CommandLine.arguments.count == 3 else {
-            throw AccountFailure("用法：account-check 工作目录 auth.json路径")
+        guard [3, 4].contains(CommandLine.arguments.count) else {
+            throw AccountFailure("用法：account-check 工作目录 auth.json路径 [accounts.json路径]")
         }
         let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true).standardizedFileURL
         let authURL = URL(fileURLWithPath: CommandLine.arguments[2]).standardizedFileURL
@@ -34,9 +36,10 @@ struct AccountCheck {
         let client = try CodexClient(installation: installation, home: session)
         try await client.initialize()
         try await client.useExternalTokens(document, plan: nil)
-        let account = try await client.readAccount()
+        let account = try document.accountInfo()
         let usage = try await client.readLimits()
-        try check(account.type == "chatgpt", "真实 Codex 账号接口")
+        try check(account.type == "chatgpt", "通过标准 JWT 库读取真实本地账号身份")
+        try check(usage.response.accountId == document.accountID, "真实额度接口确认账号身份")
         try check(!usage.response.buckets.isEmpty, "真实额度接口返回额度类别")
         try check(usage.response.mainBucket != nil, "识别 Codex 主要额度")
         let snapshotData = try JSONEncoder().encode(usage)
@@ -56,6 +59,17 @@ struct AccountCheck {
                 }
             }
         }
+        var serverErrorObserved = false
+        do { _ = try await client.request("account/read", params: ["refreshToken": "invalid-type"]) }
+        catch let error as AccountFailure {
+            serverErrorObserved = true
+            try check(error.arguments.count == 3 && !error.arguments[2].isEmpty,
+                      "真实接口参数错误保留服务端原因")
+            try check(error.description(using: chinese).contains("Codex 请求失败")
+                      && !error.description(using: english).contains(document.tokens!.access_token),
+                      "真实接口错误支持中文且不包含登录令牌")
+        }
+        try check(serverErrorObserved, "真实服务端拒绝无效参数")
         try await client.stop()
         try FileManager.default.removeItem(at: session)
         let loginSession = root.appendingPathComponent(UUID().uuidString)
@@ -103,7 +117,7 @@ struct AccountCheck {
                   "重复导入保留同一份账号文件")
         try service.rename(profileID, label: "当前验收账号")
         try check(try storage.load().profiles.first?.label == "当前验收账号", "账号名称持久保存")
-        _ = try await service.synchronizeCurrent()
+        _ = try service.synchronizeCurrent()
         try check(service.activeID == profileID, "识别独立目录中的当前账号")
         try await service.refresh(profileID)
         try check(service.registry.profiles.first?.usage != nil, "通过正式服务代码刷新真实额度")
@@ -171,7 +185,7 @@ struct AccountCheck {
         try await service.switchAccount(profileID)
         try check(try storage.readLive() == encoded, "选择当前账号保持凭据内容一致")
         try FileManager.default.removeItem(at: target)
-        _ = try await service.synchronizeCurrent(importIfMissing: false)
+        _ = try service.synchronizeCurrent(importIfMissing: false)
         try service.remove(profileID)
         try check(service.registry.profiles.isEmpty && (try storage.load()).profiles.isEmpty, "移除账号并保存记录")
         var credentialRemoved = false
@@ -182,6 +196,63 @@ struct AccountCheck {
                   "账号操作完成后清理临时登录目录")
         try check(try Data(contentsOf: authURL) == data, "全部验证结束后原有 Codex 凭据保持一致")
         try FileManager.default.removeItem(at: privateRoot)
-        print("验证完成。所有账号接口均使用本机真实 Codex 程序和现有账号。")
+        if CommandLine.arguments.count == 4 {
+            try await checkSavedAccounts(root: root, authURL: authURL,
+                registryURL: URL(fileURLWithPath: CommandLine.arguments[3]), installation: installation)
+        }
+        print("验证完成：\(checkCount) 项。所有账号接口均使用本机真实 Codex 程序和现有账号。")
+    }
+
+    @MainActor
+    static func checkSavedAccounts(root: URL, authURL: URL, registryURL: URL, installation: CodexInstallation) async throws {
+        let savedRegistry = try JSONDecoder().decode(Registry.self, from: Data(contentsOf: registryURL))
+        guard savedRegistry.profiles.count > 1 else { throw AccountFailure("多账号验证需要已有的真实账号。") }
+        let directory = root.appendingPathComponent(UUID().uuidString)
+        let target = directory.appendingPathComponent("auth.json")
+        try PrivateFiles.createDirectory(directory)
+        let currentData = try Data(contentsOf: authURL)
+        try PrivateFiles.write(currentData, to: target)
+        let storage = try AccountStorage(root: directory.appendingPathComponent("application"), liveAuth: target)
+        let service = try AccountService(storage: storage, installation: installation)
+        var originalFiles: [URL: Data] = [authURL: currentData]
+        for profile in savedRegistry.profiles {
+            let source = registryURL.deletingLastPathComponent().appendingPathComponent("credentials")
+                .appendingPathComponent(profile.id.uuidString).appendingPathComponent("auth.json")
+            let data = try Data(contentsOf: source)
+            originalFiles[source] = data
+            let info = try service.identify(data)
+            try check(info.email == profile.email, "本地账号身份与已保存的真实账号一致")
+            _ = try await service.importCredential(data, label: "多账号验证")
+        }
+        let report = await service.refreshAll()
+        try check(report.currentAccountError == nil && report.failedAccountIDs.isEmpty,
+                  "正式刷新流程成功查询全部真实账号")
+        try check(service.registry.profiles.allSatisfy { $0.lastError == nil && $0.usage != nil },
+                  "全部账号均有新的额度结果")
+        guard let activeID = service.activeID,
+              let other = service.registry.profiles.first(where: { $0.id != activeID }) else {
+            throw AccountFailure("真实账号识别失败。")
+        }
+        let unreadable = storage.vault.fileURL(id: other.id)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: unreadable.path)
+        let partial = await service.refreshAll()
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: unreadable.path)
+        try check(partial.failedAccountIDs == [other.id], "单个账号文件权限错误只影响该账号")
+        try check(service.registry.profiles.filter { $0.id != other.id }.allSatisfy { $0.lastError == nil },
+                  "单个账号失败时其他真实账号继续刷新")
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: target.path)
+        let currentFailure = await service.refreshAll()
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+        try check(currentFailure.currentAccountError != nil && service.activeID == nil,
+                  "当前账号文件无法读取时记录明确错误并清除当前账号标记")
+        try check(currentFailure.failedAccountIDs.isEmpty,
+                  "当前账号文件读取失败时全部保存账号仍可刷新")
+        let recovered = await service.refreshAll()
+        try check(recovered.currentAccountError == nil && recovered.failedAccountIDs.isEmpty && service.activeID == activeID,
+                  "文件恢复访问后全部账号正常刷新")
+        for (file, data) in originalFiles {
+            try check(try Data(contentsOf: file) == data, "多账号验证保持原有登录文件内容一致")
+        }
+        try FileManager.default.removeItem(at: directory)
     }
 }

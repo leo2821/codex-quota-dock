@@ -28,6 +28,8 @@ final class AppModel: ObservableObject {
     @Published var refreshingID: UUID?
     @Published var status: AppStatus = "Loading accounts"
     @Published var errorMessage: String?
+    @Published var currentAccountError: AccountFailure?
+    @Published private(set) var completedRefreshes = 0
     @Published var search = ""
     @Published var section = "accounts"
     @Published var loginURL: URL?
@@ -112,26 +114,24 @@ final class AppModel: ObservableObject {
         busy = true
         defer { busy = false; refreshingID = nil; syncState() }
         status = "Refreshing all accounts"
-        do {
-            _ = try await service.synchronizeCurrent()
-            syncState()
-            var failures = 0
-            for profile in service.registry.profiles {
-                refreshingID = profile.id
-                do { try await service.refresh(profile.id) }
-                catch { failures += 1 }
-                syncState()
-            }
-            lastRefresh = Date()
-            if profiles.isEmpty { status = "Add an account to view its quota" }
-            else if failures > 0 { status = .init("Accounts needing attention: %@. See their cards for details.", String(failures)) }
-            else { status = .refreshed(Date()) }
-        } catch { fail(error) }
+        let report = await service.refreshAll { id in
+            self.refreshingID = id
+            self.syncState()
+        }
+        syncState()
+        currentAccountError = report.currentAccountError
+        completedRefreshes += 1
+        lastRefresh = Date()
+        if !report.failedAccountIDs.isEmpty {
+            status = .init("Accounts needing attention: %@. See their cards for details.", String(report.failedAccountIDs.count))
+        } else if currentAccountError != nil { status = "Saved account quotas refreshed. Check the current account message." }
+        else if profiles.isEmpty { status = "Add an account to view its quota" }
+        else { status = .refreshed(Date()) }
     }
 
     func refreshOne(_ profile: Profile) async {
         await perform(.init("Refreshing %@", profile.label)) { service in
-            _ = try await service.synchronizeCurrent()
+            self.currentAccountError = service.synchronizeForRefresh()
             try await service.refresh(profile.id)
         }
     }
@@ -181,9 +181,9 @@ final class AppModel: ObservableObject {
     func importCurrent() async {
         await perform("Importing the current account") { service in
             guard let data = try service.storage.readLive() else { throw AccountFailure("Codex is not signed in.") }
-            let id = try await service.importCredential(data, label: "")
-            _ = try await service.synchronizeCurrent()
-            try await service.refresh(id)
+            _ = try await service.importCredential(data, label: "")
+            _ = try service.synchronizeCurrent()
+            self.currentAccountError = nil
         }
     }
 
@@ -199,8 +199,7 @@ final class AppModel: ObservableObject {
         await perform("Importing accounts") { service in
             for url in panel.urls {
                 let data = try Data(contentsOf: url)
-                let id = try await service.importCredential(data, label: "")
-                try await service.refresh(id)
+                _ = try await service.importCredential(data, label: "")
             }
         }
     }
@@ -213,12 +212,15 @@ final class AppModel: ObservableObject {
 
     func switchNow(_ profile: Profile) async {
         pendingSwitch = nil
-        await perform(.init("Switching to %@", profile.label)) { service in try await service.switchAccount(profile.id) }
+        await perform(.init("Switching to %@", profile.label)) { service in
+            try await service.switchAccount(profile.id)
+            self.currentAccountError = nil
+        }
     }
 
     func renew(_ profile: Profile) async {
         await perform("Renewing account credentials") { service in
-            _ = try await service.synchronizeCurrent()
+            _ = try service.synchronizeCurrent()
             try await service.updateCredential(profile.id)
         }
     }

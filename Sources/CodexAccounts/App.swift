@@ -63,6 +63,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "accountsWithUsage": model.profiles.filter { $0.usage != nil && $0.lastError == nil }.count,
             "accountsWithLocalCredentials": model.profiles.filter { $0.credentialStorage == .localFile }.count,
             "accountsNeedingMigration": model.pendingCredentialMigrations,
+            "completedRefreshes": model.completedRefreshes,
+            "currentAccountReadFailed": model.currentAccountError != nil,
+            "errorAlertPresented": model.errorMessage != nil,
+            "busy": model.busy,
             "language": model.preferences.language.rawValue,
             "mainWindows": NSApp.windows.filter { $0.title == "Codex Quota Dock" }.map {
                 ["width": $0.frame.width, "height": $0.frame.height, "visible": $0.isVisible] as [String: Any]
@@ -98,6 +102,10 @@ struct AppRoot: View {
                 catch { model.errorMessage = error.localizedDescription }
             }
             .onChange(of: model.profiles) { _, _ in
+                do { try delegate.writeDiagnostics(model: model) }
+                catch { model.errorMessage = error.localizedDescription }
+            }
+            .onChange(of: model.busy) { _, _ in
                 do { try delegate.writeDiagnostics(model: model) }
                 catch { model.errorMessage = error.localizedDescription }
             }
