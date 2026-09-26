@@ -5,6 +5,23 @@ public struct CodexInstallation {
     public let application: URL
     public let executable: URL
     public let bundleID: String
+
+    public func resolveExecutable() throws -> URL {
+        guard let executable = Self.findExecutable(in: application) else {
+            throw AccountFailure("The Codex executable was not found in %@. Reinstall the desktop app.", application.path)
+        }
+        return executable
+    }
+
+    private static func findExecutable(in application: URL) -> URL? {
+        let paths = ["Contents/Resources/codex-cli/bin/codex", "Contents/Resources/codex"]
+        for path in paths {
+            let candidate = application.appendingPathComponent(path)
+            if FileManager.default.isExecutableFile(atPath: candidate.path) { return candidate }
+        }
+        return nil
+    }
+
     public static func discover() throws -> CodexInstallation {
         let candidates = [
             NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex"),
@@ -13,8 +30,7 @@ public struct CodexInstallation {
         ].compactMap { $0 }
         for application in candidates {
             guard let bundle = Bundle(url: application), bundle.bundleIdentifier == "com.openai.codex" else { continue }
-            let executable = application.appendingPathComponent("Contents/Resources/codex")
-            if FileManager.default.isExecutableFile(atPath: executable.path) {
+            if let executable = findExecutable(in: application) {
                 return CodexInstallation(application: application, executable: executable, bundleID: "com.openai.codex")
             }
         }
@@ -45,7 +61,7 @@ public final class CodexClient {
             let document = try AuthDocument.read(Data(contentsOf: authFile))
             rememberSecrets(document)
         }
-        process.executableURL = installation.executable
+        process.executableURL = try installation.resolveExecutable()
         process.arguments = ["-c", "cli_auth_credentials_store=\"file\"",
                              "-c", "analytics.enabled=false", "-c", "feedback.enabled=false", "app-server"]
         var environment = ProcessInfo.processInfo.environment

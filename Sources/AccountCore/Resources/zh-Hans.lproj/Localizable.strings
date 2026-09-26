@@ -165,6 +165,7 @@
 "The current Codex account changed during switching. Refresh the account list and try again." = "Codex 当前账号在切换期间发生变化，请刷新账号列表后重新切换。";
 "Account file verification failed after saving." = "账号文件写入后的核验失败。";
 "Codex desktop was not found. Install the ChatGPT app that includes Codex." = "未找到 Codex 桌面应用，请安装包含 Codex 的 ChatGPT 应用。";
+"The Codex executable was not found in %@. Reinstall the desktop app." = "未在 %@ 找到 Codex 可执行程序。请重新安装桌面应用。";
 "The Codex connection is closed." = "Codex 连接已经关闭。";
 "Unable to read the Codex response. Check that your installed version supports the account API." = "Codex 返回的数据无法读取。请确认已安装的版本支持账号接口。";
 "Codex request timed out (%@). Check your network connection." = "Codex 请求超时：%@。请检查网络连接。";

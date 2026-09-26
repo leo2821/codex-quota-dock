@@ -165,6 +165,7 @@
 "The current Codex account changed during switching. Refresh the account list and try again." = "The current Codex account changed during switching. Refresh the account list and try again.";
 "Account file verification failed after saving." = "Account file verification failed after saving.";
 "Codex desktop was not found. Install the ChatGPT app that includes Codex." = "Codex desktop was not found. Install the ChatGPT app that includes Codex.";
+"The Codex executable was not found in %@. Reinstall the desktop app." = "The Codex executable was not found in %@. Reinstall the desktop app.";
 "The Codex connection is closed." = "The Codex connection is closed.";
 "Unable to read the Codex response. Check that your installed version supports the account API." = "Unable to read the Codex response. Check that your installed version supports the account API.";
 "Codex request timed out (%@). Check your network connection." = "Codex request timed out (%@). Check your network connection.";
